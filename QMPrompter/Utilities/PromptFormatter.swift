@@ -32,8 +32,8 @@ enum PromptFormatter {
 
         for character in text {
             current.append(character)
-            let shouldBreakAtStrongPunctuation = "。！？；.!?;：:".contains(character) && current.count >= 4
-            let shouldBreakAtSoftPunctuation = "，、,".contains(character) && current.count >= semanticMinimumLength
+            let shouldBreakAtStrongPunctuation = "。！？；.!?;".contains(character) && current.count >= 4
+            let shouldBreakAtSoftPunctuation = "，、,：:".contains(character) && current.count >= semanticMinimumLength
 
             if shouldBreakAtStrongPunctuation || shouldBreakAtSoftPunctuation {
                 append(current, to: &lines, fallbackCount: target)
