@@ -11,6 +11,8 @@ struct ScriptListView: View {
     @State private var showAIGeneration = false
     @State private var pendingGeneratedScriptID: Script.ID?
     @State private var pendingNewScriptAction: NewScriptAction?
+    @State private var scriptPendingDeletion: Script?
+    @State private var showDeleteConfirmation = false
     @FocusState private var searchFocused: Bool
 
     private var filteredScripts: [Script] {
@@ -108,6 +110,22 @@ struct ScriptListView: View {
                     ScriptEditorView(script: script)
                 }
             }
+            .confirmationDialog("删除文稿", isPresented: $showDeleteConfirmation, titleVisibility: .visible) {
+                Button("删除文稿", role: .destructive) {
+                    deletePendingScript()
+                }
+
+                Button("取消", role: .cancel) {
+                    scriptPendingDeletion = nil
+                }
+            } message: {
+                Text(deleteConfirmationMessage)
+            }
+            .onChange(of: showDeleteConfirmation) { _, isPresented in
+                if !isPresented {
+                    scriptPendingDeletion = nil
+                }
+            }
         }
     }
 
@@ -157,8 +175,7 @@ struct ScriptListView: View {
                         .buttonStyle(.plain)
                         .contextMenu {
                             Button(role: .destructive) {
-                                Haptics.warning()
-                                store.delete(script)
+                                requestDelete(script)
                             } label: {
                                 Label("删除", systemImage: "trash")
                             }
@@ -229,6 +246,25 @@ struct ScriptListView: View {
         guard let scriptID = pendingGeneratedScriptID else { return }
         pendingGeneratedScriptID = nil
         path.append(scriptID)
+    }
+
+    private var deleteConfirmationMessage: String {
+        let title = scriptPendingDeletion?.title.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let displayTitle = title.isEmpty ? "未命名文稿" : title
+        return "确定删除“\(displayTitle)”吗？这个操作无法撤销。"
+    }
+
+    private func requestDelete(_ script: Script) {
+        Haptics.selection()
+        scriptPendingDeletion = script
+        showDeleteConfirmation = true
+    }
+
+    private func deletePendingScript() {
+        guard let script = scriptPendingDeletion else { return }
+        Haptics.warning()
+        store.delete(script)
+        scriptPendingDeletion = nil
     }
 }
 
