@@ -23,6 +23,8 @@ struct PrompterView: View {
     @State private var speechStartProgress: Double = 0
     @State private var pendingSettingsSave = false
     @State private var settingsSaveTask: Task<Void, Never>?
+    @State private var controlsHidden = false
+    @State private var controlsHideTask: Task<Void, Never>?
     @State private var previousIdleTimerDisabled: Bool?
 
     var body: some View {
@@ -92,6 +94,8 @@ struct PrompterView: View {
 
                 topBar
                     .environment(\.colorScheme, .dark)
+                    .opacity(controlsHidden ? 0 : 1)
+                    .allowsHitTesting(!controlsHidden)
                     .zIndex(5)
             }
             .background(Color.black)
@@ -114,6 +118,9 @@ struct PrompterView: View {
             .onChange(of: engine.speed) { _, value in
                 script.scrollSpeed = value
                 scheduleSettingsSave()
+            }
+            .onChange(of: engine.isPlaying) { _, _ in
+                updateControlsAutoHide()
             }
             .onChange(of: script.fontSize) { _, _ in
                 refreshLayoutAndConfigureEngine(
@@ -168,12 +175,17 @@ struct PrompterView: View {
                     speechLineIndex = nil
                     engine.stopFollowing()
                 }
+                updateControlsAutoHide()
+            }
+            .onChange(of: showSettingsPanel) { _, _ in
+                updateControlsAutoHide()
             }
             .onChange(of: script.textColorPreset) { _, _ in scheduleSettingsSave() }
             .onChange(of: script.overlayOpacity) { _, _ in scheduleSettingsSave() }
             .onDisappear {
                 endPrompterSession()
                 flushPendingSettingsSave()
+                cancelControlsAutoHide()
                 speechFollower.stop()
                 engine.stopFollowing()
             }
@@ -287,6 +299,49 @@ struct PrompterView: View {
             pendingSettingsSave = false
             onSave()
         }
+    }
+
+    private func revealControls(temporarily: Bool) {
+        controlsHideTask?.cancel()
+
+        if controlsHidden {
+            withAnimation(.easeInOut(duration: 0.18)) {
+                controlsHidden = false
+            }
+        }
+
+        if temporarily {
+            scheduleControlsAutoHide()
+        }
+    }
+
+    private func updateControlsAutoHide() {
+        if showSettingsPanel || (!engine.isPlaying && !speechFollower.isListening) {
+            revealControls(temporarily: false)
+            return
+        }
+
+        scheduleControlsAutoHide()
+    }
+
+    private func scheduleControlsAutoHide() {
+        controlsHideTask?.cancel()
+        controlsHideTask = Task {
+            try? await Task.sleep(nanoseconds: 2_400_000_000)
+            guard !Task.isCancelled else { return }
+
+            await MainActor.run {
+                guard !showSettingsPanel && (engine.isPlaying || speechFollower.isListening) else { return }
+                withAnimation(.easeInOut(duration: 0.24)) {
+                    controlsHidden = true
+                }
+            }
+        }
+    }
+
+    private func cancelControlsAutoHide() {
+        controlsHideTask?.cancel()
+        controlsHideTask = nil
     }
 
     private func targetCharactersPerLine(width: CGFloat, fontSize: Double) -> Int {
@@ -585,6 +640,12 @@ struct PrompterView: View {
     }
 
     private func handleCanvasTap() {
+        if controlsHidden {
+            Haptics.selection()
+            revealControls(temporarily: true)
+            return
+        }
+
         if showSettingsPanel {
             Haptics.selection()
             withAnimation(.snappy(duration: 0.2)) {
@@ -773,6 +834,7 @@ struct PrompterView: View {
                 if !isManualDragging {
                     isManualDragging = true
                     dragStartOffset = engine.offset
+                    revealControls(temporarily: true)
                 }
 
                 if abs(value.translation.height) <= 12 {
