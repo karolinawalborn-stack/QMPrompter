@@ -17,7 +17,7 @@ enum PromptFormatter {
         for paragraph in normalized.components(separatedBy: "\n") {
             let trimmed = paragraph.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !trimmed.isEmpty else {
-                result.append(PromptLine(text: "", characterCount: targetCharactersPerLine))
+                result.append(PromptLine(text: "", characterCount: 0))
                 continue
             }
             result.append(contentsOf: split(trimmed, target: targetCharactersPerLine))

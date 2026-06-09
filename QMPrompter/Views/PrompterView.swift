@@ -374,9 +374,10 @@ struct PrompterView: View {
     }
 
     private func averagePromptLineHeight(for layouts: [PromptLineLayout], fallback: CGFloat) -> CGFloat {
-        guard !layouts.isEmpty else { return fallback }
-        let sum = layouts.reduce(CGFloat(0)) { $0 + $1.height }
-        return max(fallback, sum / CGFloat(layouts.count))
+        let readableLayouts = layouts.filter { !$0.line.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+        guard !readableLayouts.isEmpty else { return fallback }
+        let sum = readableLayouts.reduce(CGFloat(0)) { $0 + $1.height }
+        return max(fallback, sum / CGFloat(readableLayouts.count))
     }
 
     private func lineIndex(atContentY contentY: CGFloat, layouts: [PromptLineLayout]) -> Int {
@@ -398,9 +399,12 @@ struct PrompterView: View {
     }
 
     private func averageCharactersPerLine(for promptLines: [PromptLine]) -> CGFloat {
-        guard !promptLines.isEmpty else { return 12 }
-        let sum = promptLines.reduce(0) { $0 + $1.characterCount }
-        return CGFloat(max(6, sum / promptLines.count))
+        let readableCounts = promptLines
+            .map(\.characterCount)
+            .filter { $0 > 0 }
+        guard !readableCounts.isEmpty else { return 12 }
+        let sum = readableCounts.reduce(0, +)
+        return max(6, CGFloat(sum) / CGFloat(readableCounts.count))
     }
 
     private var topBar: some View {
