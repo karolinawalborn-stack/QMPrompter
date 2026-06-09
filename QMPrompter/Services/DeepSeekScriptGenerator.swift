@@ -116,20 +116,47 @@ struct DeepSeekScriptGenerator {
 
         let lines = result
             .components(separatedBy: .newlines)
-            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .filter { line in
-                guard !line.isEmpty else { return true }
-                return !line.hasPrefix("#") &&
-                    !line.hasPrefix("- ") &&
-                    !line.hasPrefix("* ") &&
-                    !line.hasPrefix(">") &&
-                    !line.contains("预估时长")
+            .compactMap { rawLine -> String? in
+                let line = rawLine.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !line.isEmpty else { return "" }
+                guard !shouldDropGeneratedLine(line) else { return nil }
+                let strippedLine = stripGeneratedLinePrefix(line)
+                return strippedLine.isEmpty ? nil : strippedLine
             }
 
         result = lines.joined(separator: "\n")
 
         while result.contains("\n\n\n") {
             result = result.replacingOccurrences(of: "\n\n\n", with: "\n\n")
+        }
+
+        return result.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private static func shouldDropGeneratedLine(_ line: String) -> Bool {
+        if line.hasPrefix("#") || line.hasPrefix(">") || line.contains("预估时长") {
+            return true
+        }
+
+        let normalized = line
+            .replacingOccurrences(of: "：", with: ":")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+
+        return ["口播正文", "口播正文:", "口播稿", "口播稿:", "正文", "正文:"].contains(normalized)
+    }
+
+    private static func stripGeneratedLinePrefix(_ line: String) -> String {
+        var result = line
+        let prefixPatterns = [
+            #"^[-*•]\s+"#,
+            #"^\d+[\.\)、]\s*"#,
+            #"^第[一二三四五六七八九十]+[点部分][：:、，\s]*"#
+        ]
+
+        for pattern in prefixPatterns {
+            if let range = result.range(of: pattern, options: .regularExpression) {
+                result.removeSubrange(range)
+            }
         }
 
         return result.trimmingCharacters(in: .whitespacesAndNewlines)

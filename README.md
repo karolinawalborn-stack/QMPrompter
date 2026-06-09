@@ -6,12 +6,14 @@
 
 - 文稿列表，新建、编辑、保存、删除。
 - 本地 JSON 存储，首次启动内置一篇试用文稿。
+- 首页设置 DeepSeek API Key，支持 AI 生成口播文稿。
+- AI 生成页支持键盘输入和底部大圆形语音输入。
 - 前置摄像头实时预览。
-- 全屏提词页，当前行高亮。
+- 全屏提词页，默认语音跟随，当前行轻量高亮。
 - Liquid Glass 风格提词层和可收起控制胶囊。
-- 手动匀速滚动，点击播放/暂停。
-- 左侧上下滑动调速度，右侧上下滑动调进度。
-- 字号、速度、文字颜色、背景透明度设置。
+- 语音跟随模式和速度控制模式可切换。
+- 手动上下拖动文本位置；速度模式支持播放、暂停、前进、后退和重置。
+- 字号、速度、文字颜色、摄像头透明度设置。
 - 抽象玻璃质感 App Icon。
 
 ## 工程配置
@@ -27,16 +29,16 @@
 已通过：
 
 ```bash
-xcodebuild -project QMPrompter.xcodeproj -target QMPrompter -configuration Debug -sdk iphonesimulator build
-xcodebuild -project QMPrompter.xcodeproj -target QMPrompter -configuration Debug -sdk iphoneos CODE_SIGNING_ALLOWED=NO build
+xcodebuild -project QMPrompter.xcodeproj -scheme QMPrompter -configuration Debug -destination 'generic/platform=iOS' -derivedDataPath build/DerivedData build
+xcodebuild -project QMPrompter.xcodeproj -scheme QMPrompter -configuration Debug -destination 'id=00008130-00121D002E01001C' -derivedDataPath build/DerivedData build
 ```
 
 真机安装已通过：
 
 ```bash
-xcodebuild -project QMPrompter.xcodeproj -target QMPrompter -configuration Debug -sdk iphoneos -allowProvisioningUpdates -allowProvisioningDeviceRegistration build
-xcrun devicectl device install app --device 00008130-00121D002E01001C build/Debug-iphoneos/QMPrompter.app
-xcrun devicectl device process launch --device 00008130-00121D002E01001C com.qiaomu.Prompter
+xcrun devicectl device install app --device 00008130-00121D002E01001C build/DerivedData/Build/Products/Debug-iphoneos/QMPrompter.app
+xcrun devicectl device notification post --device 00008130-00121D002E01001C --name com.apple.mobile.application_installed --name com.apple.LaunchServices.applicationRegistered --name com.apple.springboard.applicationStateChanged --name com.apple.SpringBoard.IconStateChanged
+xcrun devicectl device process launch --device 00008130-00121D002E01001C --terminate-existing com.qiaomu.Prompter
 ```
 
 签名说明：
