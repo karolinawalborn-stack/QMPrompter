@@ -25,6 +25,8 @@ struct ScriptListView: View {
             Group {
                 if store.scripts.isEmpty {
                     ContentUnavailableView("还没有文稿", systemImage: "doc.badge.plus", description: Text("新建一篇正文后即可开始提词。"))
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .background(HomeAmbientBackground())
                 } else {
                     List {
                         Section {
