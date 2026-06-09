@@ -179,15 +179,17 @@ struct PrompterView: View {
         let lines = PromptFormatter.lines(from: script.content, targetCharactersPerLine: targetCharacters)
         let fontSize = CGFloat(script.fontSize)
         let baseLineHeight = promptBaseLineHeight(fontSize: fontSize)
+        let textWidth = promptTextWidth(for: width)
         let lineLayouts = promptLineLayouts(
             for: lines,
-            width: width,
+            width: textWidth,
             fontSize: fontSize,
             baseLineHeight: baseLineHeight
         )
         let layout = PromptLayout(
             lines: lines,
             lineLayouts: lineLayouts,
+            textWidth: textWidth,
             contentHeight: lineLayouts.last.map { $0.y + $0.height } ?? 0,
             averageLineHeight: averagePromptLineHeight(for: lineLayouts, fallback: baseLineHeight),
             averageCharactersPerLine: averageCharactersPerLine(for: lines)
@@ -257,6 +259,10 @@ struct PrompterView: View {
         max(4, fontSize * 0.10)
     }
 
+    private func promptTextWidth(for viewportWidth: CGFloat) -> CGFloat {
+        max(1, viewportWidth - 40)
+    }
+
     private func promptLineLayouts(
         for promptLines: [PromptLine],
         width: CGFloat,
@@ -264,7 +270,7 @@ struct PrompterView: View {
         baseLineHeight: CGFloat
     ) -> [PromptLineLayout] {
         var currentY: CGFloat = 0
-        let usableWidth = max(1, width - 40)
+        let usableWidth = max(1, width)
 
         return promptLines.enumerated().map { index, line in
             let rowHeight = measuredPromptLineHeight(
@@ -308,8 +314,17 @@ struct PrompterView: View {
             options: [.usesLineFragmentOrigin, .usesFontLeading],
             context: nil
         )
+        let estimatedLineCount = estimatedVisualLineCount(for: text, width: width, fontSize: fontSize)
+        let estimatedHeight = CGFloat(estimatedLineCount) * baseLineHeight
 
-        return max(baseLineHeight, ceil(measured.height) + verticalPadding)
+        return max(baseLineHeight, ceil(max(measured.height, estimatedHeight)) + verticalPadding)
+    }
+
+    private func estimatedVisualLineCount(for text: String, width: CGFloat, fontSize: CGFloat) -> Int {
+        let visibleCharacterCount = max(1, text.filter { !$0.isWhitespace }.count)
+        let estimatedGlyphWidth = max(8, fontSize * 0.88)
+        let estimatedCharactersPerLine = max(1, Int((width / estimatedGlyphWidth).rounded(.down)))
+        return max(1, Int(ceil(Double(visibleCharacterCount) / Double(estimatedCharactersPerLine))))
     }
 
     private func averagePromptLineHeight(for layouts: [PromptLineLayout], fallback: CGFloat) -> CGFloat {
@@ -802,6 +817,7 @@ private struct PromptLayout: Equatable {
     static let empty = PromptLayout(
         lines: [],
         lineLayouts: [],
+        textWidth: 0,
         contentHeight: 0,
         averageLineHeight: 84,
         averageCharactersPerLine: 18
@@ -809,6 +825,7 @@ private struct PromptLayout: Equatable {
 
     let lines: [PromptLine]
     let lineLayouts: [PromptLineLayout]
+    let textWidth: CGFloat
     let contentHeight: CGFloat
     let averageLineHeight: CGFloat
     let averageCharactersPerLine: CGFloat
@@ -838,13 +855,13 @@ private struct PromptTextLayer: View {
                     .font(.system(size: script.fontSize, weight: .semibold, design: .rounded))
                     .multilineTextAlignment(.center)
                     .lineSpacing(max(4, CGFloat(script.fontSize) * 0.10))
+                    .lineLimit(nil)
                     .fixedSize(horizontal: false, vertical: true)
                     .foregroundStyle(isHighlighted ? Color.white : script.textColorPreset.color.opacity(0.62))
                     .shadow(color: isHighlighted ? .white.opacity(0.46) : .clear, radius: 11)
                     .shadow(color: isHighlighted ? .black.opacity(0.36) : .clear, radius: 4, y: 1)
-                    .frame(maxWidth: .infinity)
-                    .frame(height: lineLayout.height)
-                    .padding(.horizontal, 20)
+                    .frame(width: layout.textWidth, height: lineLayout.height, alignment: .top)
+                    .frame(maxWidth: .infinity, alignment: .center)
                     .animation(.easeInOut(duration: 0.16), value: currentIndex)
                     .offset(y: topPadding + lineLayout.y - position.offset)
             }

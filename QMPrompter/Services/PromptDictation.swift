@@ -12,6 +12,7 @@ final class PromptDictation: ObservableObject {
     private var recognitionRequest: SFSpeechAudioBufferRecognitionRequest?
     private var recognitionTask: SFSpeechRecognitionTask?
     private var inputTapInstalled = false
+    private var recognitionSessionID = UUID()
 
     func toggle() {
         isRecording ? stop() : start()
@@ -24,6 +25,7 @@ final class PromptDictation: ObservableObject {
     }
 
     func stop() {
+        recognitionSessionID = UUID()
         isRecording = false
 
         if inputTapInstalled {
@@ -92,8 +94,12 @@ final class PromptDictation: ObservableObject {
         }
 
         isRecording = true
+        let sessionID = UUID()
+        recognitionSessionID = sessionID
         recognitionTask = speechRecognizer.recognitionTask(with: request) { [weak self] result, error in
             Task { @MainActor in
+                guard self?.recognitionSessionID == sessionID else { return }
+
                 if let result {
                     self?.transcript = result.bestTranscription.formattedString
                 }
