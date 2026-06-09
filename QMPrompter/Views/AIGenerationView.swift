@@ -10,6 +10,7 @@ struct AIGenerationView: View {
     @State private var promptBeforeDictation = ""
     @State private var isGenerating = false
     @State private var errorMessage: String?
+    @State private var showSettings = false
     @State private var generationTask: Task<Void, Never>?
 
     private var canGenerate: Bool {
@@ -25,7 +26,7 @@ struct AIGenerationView: View {
                     promptInputCard
 
                     if !apiKeyStore.hasDeepSeekAPIKey {
-                        noticeCard("请先在首页左上角设置 DeepSeek API Key。", systemName: "key")
+                        apiKeySetupCard
                     }
 
                     if let message = errorMessage ?? dictation.errorMessage {
@@ -82,6 +83,9 @@ struct AIGenerationView: View {
                 cancelGeneration()
                 dictation.stop()
             }
+            .sheet(isPresented: $showSettings) {
+                AppSettingsView(apiKeyStore: apiKeyStore)
+            }
         }
     }
 
@@ -107,6 +111,36 @@ struct AIGenerationView: View {
         }
         .padding(16)
         .aiGenerationGlassSurface(cornerRadius: 24)
+    }
+
+    private var apiKeySetupCard: some View {
+        Button {
+            Haptics.selection()
+            showSettings = true
+        } label: {
+            HStack(spacing: 12) {
+                Image(systemName: "key.fill")
+                    .font(.system(size: 18, weight: .semibold))
+                    .frame(width: 34, height: 34)
+                    .background(.white.opacity(0.36), in: Circle())
+
+                Text("填写 DeepSeek API Key")
+                    .font(.system(size: 15, weight: .semibold))
+
+                Spacer()
+
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(.secondary)
+            }
+            .foregroundStyle(.primary)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(14)
+            .aiGenerationGlassSurface(cornerRadius: 18)
+            .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("填写 DeepSeek API Key")
     }
 
     private func noticeCard(_ text: String, systemName: String) -> some View {
