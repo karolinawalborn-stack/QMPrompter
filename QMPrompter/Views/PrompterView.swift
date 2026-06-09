@@ -358,6 +358,7 @@ struct PrompterView: View {
         VStack {
             HStack(alignment: .center, spacing: 10) {
                 Button {
+                    Haptics.lightImpact()
                     engine.pause()
                     dismiss()
                 } label: {
@@ -374,6 +375,7 @@ struct PrompterView: View {
                 Spacer(minLength: 12)
 
                 Button {
+                    Haptics.selection()
                     withAnimation(.snappy(duration: 0.22)) {
                         showSettingsPanel.toggle()
                     }
@@ -410,6 +412,7 @@ struct PrompterView: View {
 
     private var modeStatusButton: some View {
         Button {
+            Haptics.selection()
             toggleModeFromStatusPill()
         } label: {
             HStack(spacing: 7) {
@@ -530,6 +533,7 @@ struct PrompterView: View {
 
     private func handleCanvasTap() {
         if showSettingsPanel {
+            Haptics.selection()
             withAnimation(.snappy(duration: 0.2)) {
                 showSettingsPanel = false
             }
@@ -540,6 +544,7 @@ struct PrompterView: View {
             return
         }
 
+        Haptics.selection()
         engine.toggle()
     }
 
@@ -607,6 +612,7 @@ struct PrompterView: View {
             }
 
             Button {
+                Haptics.selection()
                 engine.toggle()
             } label: {
                 Image(systemName: engine.isPlaying ? "pause.fill" : "play.fill")
@@ -667,7 +673,10 @@ struct PrompterView: View {
         accessibilityLabel: String,
         action: @escaping () -> Void
     ) -> some View {
-        Button(action: action) {
+        Button {
+            Haptics.selection()
+            action()
+        } label: {
             Image(systemName: systemName)
                 .font(.system(size: 18, weight: .semibold))
                 .frame(width: 42, height: 42)

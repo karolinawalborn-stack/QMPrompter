@@ -53,6 +53,7 @@ struct ScriptListView: View {
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Button {
+                        Haptics.selection()
                         showSettings = true
                     } label: {
                         Image(systemName: "gearshape")
@@ -68,12 +69,14 @@ struct ScriptListView: View {
                 ToolbarItem(placement: .topBarTrailing) {
                     Menu {
                         Button {
+                            Haptics.selection()
                             draftScript = store.createDraft()
                         } label: {
                             Label("手动输入", systemImage: "square.and.pencil")
                         }
 
                         Button {
+                            Haptics.selection()
                             showAIGeneration = true
                         } label: {
                             Label("AI 生成", systemImage: "sparkles")
@@ -123,6 +126,7 @@ struct ScriptListView: View {
                 } else {
                     ForEach(filteredScripts) { script in
                         Button {
+                            Haptics.selection()
                             searchFocused = false
                             path.append(script.id)
                         } label: {
@@ -131,6 +135,7 @@ struct ScriptListView: View {
                         .buttonStyle(.plain)
                         .contextMenu {
                             Button(role: .destructive) {
+                                Haptics.warning()
                                 store.delete(script)
                             } label: {
                                 Label("删除", systemImage: "trash")
@@ -205,6 +210,7 @@ private struct HomeSearchBar: View {
 
             if !text.isEmpty {
                 Button {
+                    Haptics.selection()
                     text = ""
                 } label: {
                     Image(systemName: "xmark.circle.fill")

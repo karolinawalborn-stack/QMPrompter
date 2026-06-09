@@ -66,6 +66,7 @@ struct AIGenerationView: View {
                     isRecording: dictation.isRecording,
                     isDisabled: isGenerating
                 ) {
+                    Haptics.lightImpact()
                     dictation.toggle()
                 }
                 .padding(.top, 10)
@@ -118,6 +119,7 @@ struct AIGenerationView: View {
 
     private func startGeneration() {
         guard canGenerate else { return }
+        Haptics.mediumImpact()
         generationTask?.cancel()
         generationTask = Task {
             await generate()
@@ -165,6 +167,7 @@ struct AIGenerationView: View {
         guard !content.isEmpty else { return }
 
         let script = Script(title: scriptTitle(from: prompt), content: content)
+        Haptics.success()
         onGenerated(script)
         dismiss()
     }

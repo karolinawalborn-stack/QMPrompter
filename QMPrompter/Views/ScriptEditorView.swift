@@ -65,6 +65,7 @@ struct ScriptEditorView: View {
                 }
 
                 Button {
+                    Haptics.mediumImpact()
                     startPrompting()
                 } label: {
                     HStack(spacing: 10) {
@@ -109,6 +110,7 @@ struct ScriptEditorView: View {
         .toolbar {
             ToolbarItem(placement: .principal) {
                 Button {
+                    Haptics.selection()
                     beginTitleEditing()
                 } label: {
                     HStack(spacing: 5) {
@@ -128,6 +130,7 @@ struct ScriptEditorView: View {
 
             ToolbarItem(placement: .topBarTrailing) {
                 Button("保存") {
+                    Haptics.success()
                     save()
                     dismiss()
                 }
@@ -141,6 +144,7 @@ struct ScriptEditorView: View {
         }
         .confirmationDialog("清空正文", isPresented: $showClearConfirmation, titleVisibility: .visible) {
             Button("清空正文", role: .destructive) {
+                Haptics.warning()
                 clearContent()
             }
 
@@ -326,7 +330,10 @@ struct ScriptEditorView: View {
         isDisabled: Bool = false,
         action: @escaping () -> Void
     ) -> some View {
-        Button(action: action) {
+        Button {
+            Haptics.selection()
+            action()
+        } label: {
             Image(systemName: systemName)
                 .font(.system(size: 15, weight: .semibold))
                 .frame(width: 34, height: 34)

@@ -1,4 +1,5 @@
 import Foundation
+import UIKit
 
 struct PromptLine: Identifiable, Equatable {
     let id = UUID()
@@ -57,5 +58,28 @@ enum PromptFormatter {
 
     private static func containsSpeakableCharacter(_ text: String) -> Bool {
         text.contains { $0.isLetter || $0.isNumber }
+    }
+}
+
+@MainActor
+enum Haptics {
+    static func selection() {
+        UISelectionFeedbackGenerator().selectionChanged()
+    }
+
+    static func lightImpact() {
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+    }
+
+    static func mediumImpact() {
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+    }
+
+    static func success() {
+        UINotificationFeedbackGenerator().notificationOccurred(.success)
+    }
+
+    static func warning() {
+        UINotificationFeedbackGenerator().notificationOccurred(.warning)
     }
 }
