@@ -20,6 +20,7 @@ struct PrompterView: View {
     @State private var latestMaximumOffset: CGFloat = 0
     @State private var hasStartedDefaultSpeech = false
     @State private var speechStartPending = false
+    @State private var speechStartProgress: Double = 0
     @State private var pendingSettingsSave = false
     @State private var settingsSaveTask: Task<Void, Never>?
     @State private var previousIdleTimerDisabled: Bool?
@@ -145,7 +146,11 @@ struct PrompterView: View {
             }
             .onChange(of: speechFollower.progress) { _, progress in
                 guard speechFollower.isListening else { return }
-                let lineIndex = speechLineIndex(for: progress, promptLines: layout.lines)
+                let candidateIndex = speechLineIndex(for: progress, promptLines: layout.lines)
+                let lineIndex = stabilizedSpeechLineIndex(
+                    candidateIndex: candidateIndex,
+                    promptLines: layout.lines
+                )
                 speechLineIndex = lineIndex
                 engine.follow(to: speechTargetOffset(
                     for: lineIndex,
@@ -826,13 +831,14 @@ struct PrompterView: View {
         engine.pause()
         engine.stopFollowing()
         speechLineIndex = nil
+        speechStartProgress = Double(progress(maxOffset: maxOffset))
         speechStartPending = true
 
         withAnimation(.snappy(duration: 0.2)) {
             showSettingsPanel = false
         }
 
-        speechFollower.start(content: script.content, initialProgress: Double(progress(maxOffset: maxOffset)))
+        speechFollower.start(content: script.content, initialProgress: speechStartProgress)
     }
 
     private func stopSpeechFollowerForManualPositioning() {
@@ -863,6 +869,39 @@ struct PrompterView: View {
         }
 
         return speakableLines.last?.offset ?? 0
+    }
+
+    private func stabilizedSpeechLineIndex(candidateIndex: Int, promptLines: [PromptLine]) -> Int {
+        let speakableIndexes = promptLines.enumerated()
+            .filter { isSpeakableLine($0.element.text) }
+            .map { $0.offset }
+        guard let firstSpeakableIndex = speakableIndexes.first else { return 0 }
+
+        guard let currentIndex = speechLineIndex,
+              let currentPosition = speakableIndexes.lastIndex(where: { $0 <= currentIndex })
+        else {
+            if speechStartProgress <= 0.04 {
+                return firstSpeakableIndex
+            }
+            return nearestSpeakableIndex(to: candidateIndex, in: speakableIndexes)
+        }
+
+        guard let candidatePosition = speakableIndexes.firstIndex(of: candidateIndex) else {
+            return speakableIndexes[currentPosition]
+        }
+
+        if candidatePosition <= currentPosition {
+            return speakableIndexes[currentPosition]
+        }
+
+        let nextPosition = min(candidatePosition, currentPosition + 1)
+        return speakableIndexes[nextPosition]
+    }
+
+    private func nearestSpeakableIndex(to index: Int, in speakableIndexes: [Int]) -> Int {
+        speakableIndexes.min { lhs, rhs in
+            abs(lhs - index) < abs(rhs - index)
+        } ?? index
     }
 
     private func speechTargetOffset(
