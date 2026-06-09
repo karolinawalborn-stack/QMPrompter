@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 struct PrompterView: View {
     @Environment(\.dismiss) private var dismiss
@@ -10,8 +11,7 @@ struct PrompterView: View {
     @State private var cameraPermission: CameraPermissionState = .checking
     @State private var showSettingsPanel = false
     @State private var speechLineIndex: Int?
-    @State private var dragMode: DragMode?
-    @State private var dragStartSpeed: Double = 0
+    @State private var isManualDragging = false
     @State private var dragStartOffset: CGFloat = 0
     @State private var promptLayout: PromptLayout = .empty
     @State private var lastFormattedWidth: CGFloat = 0
@@ -64,11 +64,21 @@ struct PrompterView: View {
                 }
 
                 interactionLayer(
-                    in: proxy.size,
                     topReservedHeight: proxy.safeAreaInsets.top + 96,
                     bottomReservedHeight: proxy.safeAreaInsets.bottom + (showSettingsPanel ? (isSpeedMode ? 336 : 240) : 24)
                 )
                 .zIndex(1)
+
+                if !showSettingsPanel && maxOffset > 0 {
+                    PromptProgressRail(position: engine.position, maxOffset: maxOffset)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .trailing)
+                        .padding(.trailing, 8)
+                        .padding(.top, proxy.safeAreaInsets.top + 126)
+                        .padding(.bottom, proxy.safeAreaInsets.bottom + 132)
+                        .allowsHitTesting(false)
+                        .transition(.opacity)
+                        .zIndex(2)
+                }
 
                 if showSettingsPanel {
                     settingsPanel(maxOffset: maxOffset)
@@ -257,20 +267,49 @@ struct PrompterView: View {
         let usableWidth = max(1, width - 40)
 
         return promptLines.enumerated().map { index, line in
-            let visualRows = estimatedVisualRows(for: line.text, width: usableWidth, fontSize: fontSize)
-            let rowHeight = CGFloat(visualRows) * baseLineHeight + max(8, fontSize * 0.22)
+            let rowHeight = measuredPromptLineHeight(
+                for: line.text,
+                width: usableWidth,
+                fontSize: fontSize,
+                baseLineHeight: baseLineHeight
+            )
             let layout = PromptLineLayout(index: index, line: line, y: currentY, height: rowHeight)
             currentY += rowHeight
             return layout
         }
     }
 
-    private func estimatedVisualRows(for text: String, width: CGFloat, fontSize: CGFloat) -> Int {
-        guard !text.isEmpty else { return 1 }
+    private func measuredPromptLineHeight(
+        for text: String,
+        width: CGFloat,
+        fontSize: CGFloat,
+        baseLineHeight: CGFloat
+    ) -> CGFloat {
+        let verticalPadding = max(16, fontSize * 0.28)
+        guard !text.isEmpty else {
+            return baseLineHeight * 0.72 + verticalPadding
+        }
 
-        let estimatedCharacterWidth = max(8, fontSize * 0.84)
-        let charactersPerRow = max(1, Int(width / estimatedCharacterWidth))
-        return max(1, Int((Double(text.count) / Double(charactersPerRow)).rounded(.up)))
+        let font = UIFont.systemFont(ofSize: fontSize, weight: .semibold)
+        let paragraphStyle = NSMutableParagraphStyle()
+        paragraphStyle.alignment = .center
+        paragraphStyle.lineSpacing = promptLineSpacing(fontSize: fontSize)
+        paragraphStyle.lineBreakMode = .byWordWrapping
+
+        let attributedText = NSAttributedString(
+            string: text,
+            attributes: [
+                .font: font,
+                .paragraphStyle: paragraphStyle
+            ]
+        )
+        let measured = attributedText.boundingRect(
+            with: CGSize(width: width, height: .greatestFiniteMagnitude),
+            options: [.usesLineFragmentOrigin, .usesFontLeading],
+            context: nil
+        )
+
+        return max(baseLineHeight, ceil(measured.height) + verticalPadding)
     }
 
     private func averagePromptLineHeight(for layouts: [PromptLineLayout], fallback: CGFloat) -> CGFloat {
@@ -282,11 +321,19 @@ struct PrompterView: View {
     private func lineIndex(atContentY contentY: CGFloat, layouts: [PromptLineLayout]) -> Int {
         guard !layouts.isEmpty else { return 0 }
 
-        if let layout = layouts.first(where: { contentY <= $0.y + $0.height }) {
-            return layout.index
+        var lowerBound = 0
+        var upperBound = layouts.count
+
+        while lowerBound < upperBound {
+            let middle = (lowerBound + upperBound) / 2
+            if contentY <= layouts[middle].y + layouts[middle].height {
+                upperBound = middle
+            } else {
+                lowerBound = middle + 1
+            }
         }
 
-        return layouts.last?.index ?? 0
+        return layouts[min(lowerBound, layouts.count - 1)].index
     }
 
     private func averageCharactersPerLine(for promptLines: [PromptLine]) -> CGFloat {
@@ -439,32 +486,16 @@ struct PrompterView: View {
         }
     }
 
-    private func interactionLayer(
-        in size: CGSize,
-        topReservedHeight: CGFloat,
-        bottomReservedHeight: CGFloat
-    ) -> some View {
+    private func interactionLayer(topReservedHeight: CGFloat, bottomReservedHeight: CGFloat) -> some View {
         VStack(spacing: 0) {
             Color.clear
                 .frame(height: topReservedHeight)
                 .allowsHitTesting(false)
 
-            HStack(spacing: 0) {
-                Color.clear
-                    .contentShape(Rectangle())
-                    .onTapGesture(perform: handleCanvasTap)
-                    .gesture(sideDragGesture(.speed))
-
-                Color.clear
-                    .contentShape(Rectangle())
-                    .onTapGesture(perform: handleCanvasTap)
-                    .gesture(sideDragGesture(.manualScroll))
-
-                Color.clear
-                    .contentShape(Rectangle())
-                    .onTapGesture(perform: handleCanvasTap)
-                    .gesture(sideDragGesture(.progress))
-            }
+            Color.clear
+                .contentShape(Rectangle())
+                .onTapGesture(perform: handleCanvasTap)
+                .gesture(manualScrollGesture)
 
             Color.clear
                 .frame(height: bottomReservedHeight)
@@ -647,41 +678,24 @@ struct PrompterView: View {
         return min(1, max(0, engine.offset / maxOffset))
     }
 
-    private func sideDragGesture(_ mode: DragMode) -> some Gesture {
+    private var manualScrollGesture: some Gesture {
         DragGesture(minimumDistance: 12)
             .onChanged { value in
-                if speechFollower.isListening, mode != .manualScroll {
+                if !isManualDragging {
+                    isManualDragging = true
+                    dragStartOffset = engine.offset
+                }
+
+                if abs(value.translation.height) <= 12 {
                     return
                 }
 
-                if dragMode == nil {
-                    dragMode = mode
-                    dragStartSpeed = engine.speed
-                    dragStartOffset = engine.offset
-
-                    if mode == .manualScroll {
-                        stopSpeechFollowerForManualPositioning()
-                    } else {
-                        showSettingsPanel = true
-                    }
-                }
-
-                switch dragMode {
-                case .speed:
-                    let delta = -Double(value.translation.height) * 0.42
-                    engine.setSpeed(dragStartSpeed + delta)
-                    script.scrollSpeed = engine.speed
-                case .progress:
-                    engine.setOffset(dragStartOffset - value.translation.height * 1.35)
-                case .manualScroll:
-                    engine.setOffset(dragStartOffset - value.translation.height * 1.05)
-                case .none:
-                    break
-                }
+                stopSpeechFollowerForManualPositioning()
+                engine.setOffset(dragStartOffset - value.translation.height * 1.05)
             }
             .onEnded { _ in
-                dragMode = nil
-                onSave()
+                isManualDragging = false
+                dragStartOffset = engine.offset
             }
     }
 
@@ -843,9 +857,42 @@ private struct PromptTextLayer: View {
 
         let visibleTop = position.offset - topPadding - viewportHeight * 0.35
         let visibleBottom = position.offset - topPadding + viewportHeight * 1.35
-        let start = layout.lineLayouts.firstIndex { $0.y + $0.height >= visibleTop }.map { max(0, $0 - 2) } ?? 0
-        let end = layout.lineLayouts.firstIndex { $0.y > visibleBottom }.map { min(layout.lineLayouts.count, $0 + 2) } ?? layout.lineLayouts.count
+        let start = max(0, firstLayoutEnding(after: visibleTop) - 2)
+        let end = min(layout.lineLayouts.count, firstLayoutStarting(after: visibleBottom) + 2)
         return start..<end
+    }
+
+    private func firstLayoutEnding(after y: CGFloat) -> Int {
+        var lowerBound = 0
+        var upperBound = layout.lineLayouts.count
+
+        while lowerBound < upperBound {
+            let middle = (lowerBound + upperBound) / 2
+            let line = layout.lineLayouts[middle]
+            if line.y + line.height >= y {
+                upperBound = middle
+            } else {
+                lowerBound = middle + 1
+            }
+        }
+
+        return min(lowerBound, layout.lineLayouts.count - 1)
+    }
+
+    private func firstLayoutStarting(after y: CGFloat) -> Int {
+        var lowerBound = 0
+        var upperBound = layout.lineLayouts.count
+
+        while lowerBound < upperBound {
+            let middle = (lowerBound + upperBound) / 2
+            if layout.lineLayouts[middle].y > y {
+                upperBound = middle
+            } else {
+                lowerBound = middle + 1
+            }
+        }
+
+        return lowerBound
     }
 
     private func isSpeakableLine(_ text: String) -> Bool {
@@ -888,10 +935,40 @@ private struct PromptProgressSlider: View {
     }
 }
 
-private enum DragMode {
-    case speed
-    case progress
-    case manualScroll
+private struct PromptProgressRail: View {
+    @ObservedObject var position: ScrollPosition
+
+    let maxOffset: CGFloat
+
+    var body: some View {
+        GeometryReader { proxy in
+            let progress = currentProgress
+            let trackHeight = max(44, proxy.size.height)
+            let thumbHeight = max(28, min(trackHeight * 0.28, 64))
+            let travel = max(0, trackHeight - thumbHeight)
+
+            ZStack(alignment: .top) {
+                Capsule()
+                    .fill(.white.opacity(0.13))
+                    .overlay(
+                        Capsule()
+                            .stroke(.white.opacity(0.16), lineWidth: 0.5)
+                    )
+
+                Capsule()
+                    .fill(.white.opacity(0.62))
+                    .frame(height: thumbHeight)
+                    .shadow(color: .black.opacity(0.14), radius: 7, y: 2)
+                    .offset(y: travel * progress)
+            }
+        }
+        .frame(width: 4)
+    }
+
+    private var currentProgress: CGFloat {
+        guard maxOffset > 0 else { return 0 }
+        return min(1, max(0, position.offset / maxOffset))
+    }
 }
 
 private extension View {
