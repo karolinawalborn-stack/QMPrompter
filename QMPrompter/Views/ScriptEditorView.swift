@@ -208,6 +208,13 @@ struct ScriptEditorView: View {
         case .display:
             ScrollView {
                 VStack(spacing: 12) {
+                    DisplayPreviewPanel(
+                        text: displayPreviewText,
+                        fontSize: script.fontSize,
+                        textColor: script.textColorPreset.color,
+                        overlayOpacity: script.overlayOpacity
+                    )
+
                     settingSlider(
                         title: "字号",
                         systemName: "textformat.size",
@@ -305,6 +312,20 @@ struct ScriptEditorView: View {
             get: { cameraTransparency },
             set: { script.overlayOpacity = min(0.82, max(0.18, 1 - $0)) }
         )
+    }
+
+    private var displayPreviewText: String {
+        let lines = script.content
+            .components(separatedBy: .newlines)
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        let source = lines.first ?? "开始提词"
+
+        if source.count <= 26 {
+            return source
+        }
+
+        return String(source.prefix(26))
     }
 
     private var editorActions: some View {
@@ -435,6 +456,65 @@ struct ScriptEditorView: View {
             Slider(value: value, in: range, step: step)
         }
         .editorSettingSurface()
+    }
+}
+
+private struct DisplayPreviewPanel: View {
+    let text: String
+    let fontSize: Double
+    let textColor: Color
+    let overlayOpacity: Double
+
+    private var previewFontSize: CGFloat {
+        min(54, max(22, CGFloat(fontSize) * 0.72))
+    }
+
+    var body: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 24, style: .continuous)
+                .fill(cameraLikeGradient)
+                .overlay(.black.opacity(overlayOpacity))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 24, style: .continuous)
+                        .stroke(
+                            LinearGradient(
+                                colors: [
+                                    .white.opacity(0.36),
+                                    .white.opacity(0.10),
+                                    .black.opacity(0.08)
+                                ],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            ),
+                            lineWidth: 0.7
+                        )
+                )
+
+            Text(text)
+                .font(.system(size: previewFontSize, weight: .semibold, design: .rounded))
+                .multilineTextAlignment(.center)
+                .lineSpacing(max(5, previewFontSize * 0.12))
+                .foregroundStyle(textColor.opacity(0.94))
+                .lineLimit(2)
+                .minimumScaleFactor(0.82)
+                .shadow(color: .black.opacity(0.42), radius: 8, y: 2)
+                .padding(.horizontal, 24)
+        }
+        .frame(height: 156)
+        .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .shadow(color: .black.opacity(0.08), radius: 18, y: 10)
+    }
+
+    private var cameraLikeGradient: LinearGradient {
+        LinearGradient(
+            colors: [
+                Color(red: 0.72, green: 0.72, blue: 0.69),
+                Color(red: 0.38, green: 0.40, blue: 0.42),
+                Color(red: 0.15, green: 0.15, blue: 0.16)
+            ],
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
+        )
     }
 }
 
