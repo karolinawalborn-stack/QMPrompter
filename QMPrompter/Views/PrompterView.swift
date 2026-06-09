@@ -99,16 +99,13 @@ struct PrompterView: View {
             .contentShape(Rectangle())
             .onAppear {
                 beginPrompterSession()
-                let updatedLayout = refreshPromptLayout(width: proxy.size.width)
-                let updatedMaxOffset = maximumOffset(
-                    for: updatedLayout,
+                let updatedState = refreshLayoutAndConfigureEngine(
+                    width: proxy.size.width,
                     viewportHeight: proxy.size.height,
                     topPadding: topPadding,
                     bottomPadding: bottomPadding
                 )
-                latestMaximumOffset = updatedMaxOffset
-                configureEngine(with: updatedLayout, maximumOffset: updatedMaxOffset)
-                startDefaultSpeechIfNeeded(maxOffset: updatedMaxOffset)
+                startDefaultSpeechIfNeeded(maxOffset: updatedState.maximumOffset)
             }
             .onChange(of: script.scrollSpeed) { _, value in
                 engine.setSpeed(value)
@@ -118,17 +115,29 @@ struct PrompterView: View {
                 scheduleSettingsSave()
             }
             .onChange(of: script.fontSize) { _, _ in
-                let updatedLayout = refreshPromptLayout(width: proxy.size.width)
-                configureEngine(with: updatedLayout, maximumOffset: maxOffset)
+                refreshLayoutAndConfigureEngine(
+                    width: proxy.size.width,
+                    viewportHeight: proxy.size.height,
+                    topPadding: topPadding,
+                    bottomPadding: bottomPadding
+                )
                 scheduleSettingsSave()
             }
             .onChange(of: script.content) { _, _ in
-                let updatedLayout = refreshPromptLayout(width: proxy.size.width)
-                configureEngine(with: updatedLayout, maximumOffset: maxOffset)
+                refreshLayoutAndConfigureEngine(
+                    width: proxy.size.width,
+                    viewportHeight: proxy.size.height,
+                    topPadding: topPadding,
+                    bottomPadding: bottomPadding
+                )
             }
             .onChange(of: proxy.size.width) { _, width in
-                let updatedLayout = refreshPromptLayout(width: width)
-                configureEngine(with: updatedLayout, maximumOffset: maxOffset)
+                refreshLayoutAndConfigureEngine(
+                    width: width,
+                    viewportHeight: proxy.size.height,
+                    topPadding: topPadding,
+                    bottomPadding: bottomPadding
+                )
             }
             .onChange(of: maxOffset) { _, value in
                 latestMaximumOffset = value
@@ -176,6 +185,25 @@ struct PrompterView: View {
         guard let previousIdleTimerDisabled else { return }
         UIApplication.shared.isIdleTimerDisabled = previousIdleTimerDisabled
         self.previousIdleTimerDisabled = nil
+    }
+
+    @discardableResult
+    private func refreshLayoutAndConfigureEngine(
+        width: CGFloat,
+        viewportHeight: CGFloat,
+        topPadding: CGFloat,
+        bottomPadding: CGFloat
+    ) -> (layout: PromptLayout, maximumOffset: CGFloat) {
+        let updatedLayout = refreshPromptLayout(width: width)
+        let updatedMaximumOffset = maximumOffset(
+            for: updatedLayout,
+            viewportHeight: viewportHeight,
+            topPadding: topPadding,
+            bottomPadding: bottomPadding
+        )
+        latestMaximumOffset = updatedMaximumOffset
+        configureEngine(with: updatedLayout, maximumOffset: updatedMaximumOffset)
+        return (updatedLayout, updatedMaximumOffset)
     }
 
     @discardableResult
