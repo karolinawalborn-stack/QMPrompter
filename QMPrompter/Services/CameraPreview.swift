@@ -53,15 +53,34 @@ final class PreviewContainerView: UIView {
     }
 }
 
-final class CameraCoordinator {
+final class CameraCoordinator: NSObject {
     private let session = AVCaptureSession()
     private let sessionQueue = DispatchQueue(label: "com.qiaomu.prompter.camera")
     private var didConfigure = false
     private var previewView: PreviewContainerView?
     private var permissionState: Binding<CameraPermissionState>
+    private var isActive = true
 
     init(permissionState: Binding<CameraPermissionState>) {
         self.permissionState = permissionState
+        super.init()
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleWillResignActive),
+            name: UIApplication.willResignActiveNotification,
+            object: nil
+        )
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleDidBecomeActive),
+            name: UIApplication.didBecomeActiveNotification,
+            object: nil
+        )
+    }
+
+    deinit {
+        NotificationCenter.default.removeObserver(self)
+        stopSession()
     }
 
     func attach(to view: PreviewContainerView) {
@@ -101,6 +120,7 @@ final class CameraCoordinator {
     private func startSession() {
         sessionQueue.async { [weak self] in
             guard let self else { return }
+            guard isActive else { return }
             if !didConfigure {
                 configureSession()
             }
@@ -132,5 +152,20 @@ final class CameraCoordinator {
         DispatchQueue.main.async { [weak self] in
             self?.permissionState.wrappedValue = state
         }
+    }
+
+    @objc private func handleWillResignActive() {
+        isActive = false
+        stopSession()
+    }
+
+    @objc private func handleDidBecomeActive() {
+        isActive = true
+        guard AVCaptureDevice.authorizationStatus(for: .video) == .authorized else {
+            requestAndStart()
+            return
+        }
+        setPermissionState(.authorized)
+        startSession()
     }
 }

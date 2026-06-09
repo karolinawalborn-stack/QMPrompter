@@ -484,6 +484,21 @@ struct PrompterView: View {
                 .multilineTextAlignment(.center)
                 .foregroundStyle(.secondary)
                 .frame(maxWidth: 280)
+
+            if cameraPermission == .denied {
+                Button {
+                    openAppSettings()
+                } label: {
+                    Text("打开设置")
+                        .font(.system(size: 14, weight: .semibold, design: .rounded))
+                        .foregroundStyle(.primary)
+                        .padding(.horizontal, 16)
+                        .frame(height: 34)
+                        .glassCapsule()
+                        .contentShape(Capsule())
+                }
+                .buttonStyle(.plain)
+            }
         }
         .padding(22)
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
