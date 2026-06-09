@@ -7,8 +7,10 @@ struct ScriptListView: View {
     @State private var searchText = ""
     @State private var path = NavigationPath()
     @State private var showSettings = false
+    @State private var showNewScriptOptions = false
     @State private var showAIGeneration = false
     @State private var pendingGeneratedScriptID: Script.ID?
+    @State private var pendingNewScriptAction: NewScriptAction?
     @FocusState private var searchFocused: Bool
 
     private var filteredScripts: [Script] {
@@ -67,20 +69,9 @@ struct ScriptListView: View {
                 }
 
                 ToolbarItem(placement: .topBarTrailing) {
-                    Menu {
-                        Button {
-                            Haptics.selection()
-                            draftScript = store.createDraft()
-                        } label: {
-                            Label("手动输入", systemImage: "square.and.pencil")
-                        }
-
-                        Button {
-                            Haptics.selection()
-                            showAIGeneration = true
-                        } label: {
-                            Label("AI 生成", systemImage: "sparkles")
-                        }
+                    Button {
+                        Haptics.selection()
+                        showNewScriptOptions = true
                     } label: {
                         Image(systemName: "plus")
                             .font(.system(size: 24, weight: .semibold))
@@ -95,6 +86,16 @@ struct ScriptListView: View {
             .sheet(isPresented: $showSettings) {
                 AppSettingsView(apiKeyStore: apiKeyStore)
             }
+            .sheet(isPresented: $showNewScriptOptions, onDismiss: openPendingNewScriptAction) {
+                NewScriptOptionsView(
+                    onManualInput: { chooseNewScriptAction(.manualInput) },
+                    onAIGeneration: { chooseNewScriptAction(.aiGeneration) }
+                )
+                .presentationDetents([.height(224)])
+                .presentationDragIndicator(.visible)
+                .presentationCornerRadius(30)
+                .presentationBackground(.ultraThinMaterial)
+            }
             .sheet(isPresented: $showAIGeneration, onDismiss: openPendingGeneratedScript) {
                 AIGenerationView(apiKeyStore: apiKeyStore) { script in
                     store.save(script)
@@ -107,6 +108,24 @@ struct ScriptListView: View {
                     ScriptEditorView(script: script)
                 }
             }
+        }
+    }
+
+    private func chooseNewScriptAction(_ action: NewScriptAction) {
+        Haptics.selection()
+        pendingNewScriptAction = action
+        showNewScriptOptions = false
+    }
+
+    private func openPendingNewScriptAction() {
+        guard let action = pendingNewScriptAction else { return }
+        pendingNewScriptAction = nil
+
+        switch action {
+        case .manualInput:
+            draftScript = store.createDraft()
+        case .aiGeneration:
+            showAIGeneration = true
         }
     }
 
@@ -189,6 +208,73 @@ struct ScriptListView: View {
         guard let scriptID = pendingGeneratedScriptID else { return }
         pendingGeneratedScriptID = nil
         path.append(scriptID)
+    }
+}
+
+private enum NewScriptAction {
+    case manualInput
+    case aiGeneration
+}
+
+private struct NewScriptOptionsView: View {
+    let onManualInput: () -> Void
+    let onAIGeneration: () -> Void
+
+    var body: some View {
+        VStack(spacing: 16) {
+            Text("新建文稿")
+                .font(.headline.weight(.semibold))
+                .foregroundStyle(.primary)
+
+            HStack(spacing: 12) {
+                NewScriptOptionButton(
+                    title: "手动输入",
+                    systemName: "square.and.pencil",
+                    action: onManualInput
+                )
+
+                NewScriptOptionButton(
+                    title: "AI 生成",
+                    systemName: "sparkles",
+                    action: onAIGeneration
+                )
+            }
+        }
+        .padding(.horizontal, 18)
+        .padding(.top, 18)
+        .padding(.bottom, 24)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+    }
+}
+
+private struct NewScriptOptionButton: View {
+    let title: String
+    let systemName: String
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            VStack(spacing: 10) {
+                Image(systemName: systemName)
+                    .font(.system(size: 22, weight: .semibold))
+                    .frame(width: 42, height: 42)
+                    .background(.white.opacity(0.38), in: Circle())
+                    .overlay(
+                        Circle()
+                            .stroke(.white.opacity(0.52), lineWidth: 0.7)
+                    )
+
+                Text(title)
+                    .font(.system(size: 16, weight: .semibold))
+                    .lineLimit(1)
+            }
+            .foregroundStyle(.primary)
+            .frame(maxWidth: .infinity)
+            .frame(height: 112)
+            .liquidCardSurface(cornerRadius: 22)
+            .contentShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+        }
+        .buttonStyle(.plain)
     }
 }
 
