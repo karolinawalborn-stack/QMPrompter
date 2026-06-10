@@ -43,7 +43,7 @@ enum AIHTTPClient {
 
         if urlError.code == .secureConnectionFailed,
            let host = url?.host,
-           host.hasSuffix("aigocode.com") {
+           isAigocodeHost(host) {
             message += "\n请切换手机网络、DNS/VPN，或改用服务器中转地址。"
         }
 
@@ -52,6 +52,14 @@ enum AIHTTPClient {
 
     private static func usesCompatibilityTLS(for url: URL?) -> Bool {
         guard let host = url?.host?.lowercased() else { return false }
-        return host == "api.aigocode.com" || host.hasSuffix(".aigocode.com")
+        return isAigocodeHost(host)
+    }
+
+    private static func isAigocodeHost(_ host: String) -> Bool {
+        let normalizedHost = host.lowercased()
+        return normalizedHost == "api.aigocode.com" ||
+            normalizedHost.hasSuffix(".aigocode.com") ||
+            normalizedHost == "api.aigocode.app" ||
+            normalizedHost.hasSuffix(".aigocode.app")
     }
 }

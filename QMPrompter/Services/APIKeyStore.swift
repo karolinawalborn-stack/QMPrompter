@@ -30,16 +30,16 @@ enum AIProvider: String, CaseIterable, Codable, Hashable, Identifiable {
     var defaultBaseURL: String {
         switch self {
         case .deepSeek: "https://api.deepseek.com"
-        case .openAICompatible: "https://api.aigocode.com"
-        case .anthropicCompatible: "https://api.aigocode.com"
+        case .openAICompatible: "https://api.aigocode.app"
+        case .anthropicCompatible: "https://api.aigocode.app"
         }
     }
 
     var legacyDefaultBaseURLs: [String] {
         switch self {
         case .deepSeek: []
-        case .openAICompatible: ["https://api.openai.com/v1"]
-        case .anthropicCompatible: ["https://api.anthropic.com"]
+        case .openAICompatible: ["https://api.aigocode.com", "https://api.openai.com/v1"]
+        case .anthropicCompatible: ["https://api.aigocode.com", "https://api.anthropic.com"]
         }
     }
 
