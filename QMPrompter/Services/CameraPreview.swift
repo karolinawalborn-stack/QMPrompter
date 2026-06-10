@@ -17,7 +17,7 @@ struct CameraPreview: UIViewRepresentable {
     }
 
     static func dismantleUIView(_ uiView: PreviewContainerView, coordinator: CameraCoordinator) {
-        coordinator.stopSession()
+        coordinator.invalidate()
         uiView.previewLayer.session = nil
     }
 
@@ -53,15 +53,35 @@ final class PreviewContainerView: UIView {
     }
 }
 
-final class CameraCoordinator {
+final class CameraCoordinator: NSObject {
     private let session = AVCaptureSession()
     private let sessionQueue = DispatchQueue(label: "com.qiaomu.prompter.camera")
     private var didConfigure = false
-    private var previewView: PreviewContainerView?
+    private weak var previewView: PreviewContainerView?
     private var permissionState: Binding<CameraPermissionState>
+    private var isActive = true
+    private var isInvalidated = false
 
     init(permissionState: Binding<CameraPermissionState>) {
         self.permissionState = permissionState
+        super.init()
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleWillResignActive),
+            name: UIApplication.willResignActiveNotification,
+            object: nil
+        )
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleDidBecomeActive),
+            name: UIApplication.didBecomeActiveNotification,
+            object: nil
+        )
+    }
+
+    deinit {
+        NotificationCenter.default.removeObserver(self)
+        invalidate()
     }
 
     func attach(to view: PreviewContainerView) {
@@ -70,6 +90,8 @@ final class CameraCoordinator {
     }
 
     func requestAndStart() {
+        guard !isInvalidated else { return }
+
         switch AVCaptureDevice.authorizationStatus(for: .video) {
         case .authorized:
             setPermissionState(.authorized)
@@ -77,9 +99,10 @@ final class CameraCoordinator {
         case .notDetermined:
             setPermissionState(.checking)
             AVCaptureDevice.requestAccess(for: .video) { [weak self] granted in
-                self?.setPermissionState(granted ? .authorized : .denied)
+                guard let self, !self.isInvalidated else { return }
+                self.setPermissionState(granted ? .authorized : .denied)
                 if granted {
-                    self?.startSession()
+                    self.startSession()
                 }
             }
         case .denied, .restricted:
@@ -90,17 +113,26 @@ final class CameraCoordinator {
     }
 
     func stopSession() {
-        sessionQueue.async { [weak self] in
-            guard let self else { return }
+        let session = session
+        sessionQueue.async {
             if session.isRunning {
                 session.stopRunning()
             }
         }
     }
 
+    func invalidate() {
+        isInvalidated = true
+        isActive = false
+        previewView?.previewLayer.session = nil
+        previewView = nil
+        stopSession()
+    }
+
     private func startSession() {
         sessionQueue.async { [weak self] in
             guard let self else { return }
+            guard isActive, !isInvalidated else { return }
             if !didConfigure {
                 configureSession()
             }
@@ -132,5 +164,21 @@ final class CameraCoordinator {
         DispatchQueue.main.async { [weak self] in
             self?.permissionState.wrappedValue = state
         }
+    }
+
+    @objc private func handleWillResignActive() {
+        isActive = false
+        stopSession()
+    }
+
+    @objc private func handleDidBecomeActive() {
+        guard !isInvalidated else { return }
+        isActive = true
+        guard AVCaptureDevice.authorizationStatus(for: .video) == .authorized else {
+            requestAndStart()
+            return
+        }
+        setPermissionState(.authorized)
+        startSession()
     }
 }

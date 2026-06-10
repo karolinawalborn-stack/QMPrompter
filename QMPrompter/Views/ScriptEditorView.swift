@@ -6,19 +6,31 @@ struct ScriptEditorView: View {
     @EnvironmentObject private var store: ScriptStore
 
     @State private var script: Script
+    @State private var shouldDiscardOnDisappear = false
     @State private var showPrompter = false
     @State private var showTitleEditor = false
     @State private var titleDraft = ""
-    @State private var showClearPanel = false
+    @State private var showClearConfirmation = false
     @State private var selectedTab: EditorTab = .script
+    @State private var autosaveTask: Task<Void, Never>?
     @FocusState private var editorFocused: Bool
+    private let showsCancelButton: Bool
 
-    init(script: Script) {
+    init(script: Script, showsCancelButton: Bool = false) {
         _script = State(initialValue: script)
+        self.showsCancelButton = showsCancelButton
     }
 
     private var canStartPrompting: Bool {
         !script.content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private var isStoredScript: Bool {
+        store.script(with: script.id) != nil
+    }
+
+    private var canPersistScript: Bool {
+        canStartPrompting || isStoredScript
     }
 
     var body: some View {
@@ -46,7 +58,7 @@ struct ScriptEditorView: View {
             Button("保存") {
                 let nextTitle = titleDraft.trimmingCharacters(in: .whitespacesAndNewlines)
                 script.title = nextTitle.isEmpty ? "未命名文稿" : nextTitle
-                save()
+                saveIfPersistable()
             }
         }
         .safeAreaInset(edge: .bottom) {
@@ -57,6 +69,7 @@ struct ScriptEditorView: View {
                 }
 
                 Button {
+                    Haptics.mediumImpact()
                     startPrompting()
                 } label: {
                     HStack(spacing: 10) {
@@ -76,7 +89,7 @@ struct ScriptEditorView: View {
                     .foregroundStyle(.primary)
                     .frame(maxWidth: .infinity)
                     .padding(.horizontal, 18)
-                    .padding(.vertical, 13)
+                    .padding(.vertical, 17)
                     .editorGlassButton()
                     .contentShape(Capsule())
                 }
@@ -89,18 +102,22 @@ struct ScriptEditorView: View {
             .padding(.bottom, 8)
             .animation(.snappy(duration: 0.22), value: selectedTab)
             .background {
-                Rectangle()
-                    .fill(.ultraThinMaterial)
-                    .overlay(alignment: .top) {
-                        Rectangle()
-                            .fill(.white.opacity(0.18))
-                            .frame(height: 0.5)
-                    }
+                EditorDockBackground()
             }
         }
         .toolbar {
+            if showsCancelButton {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("取消") {
+                        Haptics.selection()
+                        cancelEditing()
+                    }
+                }
+            }
+
             ToolbarItem(placement: .principal) {
                 Button {
+                    Haptics.selection()
                     beginTitleEditing()
                 } label: {
                     HStack(spacing: 5) {
@@ -120,10 +137,20 @@ struct ScriptEditorView: View {
 
             ToolbarItem(placement: .topBarTrailing) {
                 Button("保存") {
+                    Haptics.success()
                     save()
                     dismiss()
                 }
-                .disabled(script.content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                .disabled(!canPersistScript)
+            }
+
+            ToolbarItemGroup(placement: .keyboard) {
+                Spacer()
+
+                Button("完成") {
+                    editorFocused = false
+                }
+                .fontWeight(.semibold)
             }
         }
         .fullScreenCover(isPresented: $showPrompter) {
@@ -131,20 +158,24 @@ struct ScriptEditorView: View {
                 save()
             }
         }
-        .overlay {
-            GlassActionPanel(isPresented: showClearPanel) {
-                showClearPanel = false
-            } content: {
-                clearPanelContent
+        .confirmationDialog("清空正文", isPresented: $showClearConfirmation, titleVisibility: .visible) {
+            Button("清空正文", role: .destructive) {
+                Haptics.warning()
+                clearContent()
             }
+
+            Button("取消", role: .cancel) {}
+        } message: {
+            Text("文稿名和显示设置会保留。")
         }
         .onAppear {
             normalizeDisplaySettings()
         }
+        .onChange(of: script) { _, _ in
+            scheduleAutosave()
+        }
         .onDisappear {
-            if !script.content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                save()
-            }
+            flushPendingAutosave()
         }
     }
 
@@ -152,67 +183,107 @@ struct ScriptEditorView: View {
     private var tabContent: some View {
         switch selectedTab {
         case .script:
-            Form {
-                Section {
+            ZStack(alignment: .topLeading) {
+                RoundedRectangle(cornerRadius: 22, style: .continuous)
+                    .fill(Color(.secondarySystemGroupedBackground).opacity(0.42))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 22, style: .continuous)
+                            .stroke(.white.opacity(0.34), lineWidth: 0.7)
+                    )
+                    .shadow(color: .black.opacity(0.035), radius: 16, y: 8)
+                    .padding(.horizontal, 14)
+                    .padding(.top, 10)
+
+                ZStack(alignment: .topLeading) {
                     TextEditor(text: $script.content)
-                        .frame(minHeight: 420)
+                        .padding(.horizontal, 18)
+                        .padding(.vertical, 16)
                         .font(.system(size: 17, weight: .regular, design: .default))
                         .lineSpacing(4)
                         .scrollContentBackground(.hidden)
                         .focused($editorFocused)
+
+                    if script.content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        Text("输入口播正文")
+                            .font(.system(size: 17))
+                            .foregroundStyle(.secondary.opacity(0.64))
+                            .padding(.horizontal, 24)
+                            .padding(.vertical, 24)
+                            .allowsHitTesting(false)
+                    }
                 }
+                .padding(.horizontal, 14)
+                .padding(.top, 10)
             }
-            .scrollContentBackground(.hidden)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(Color(.systemGroupedBackground))
         case .display:
-            Form {
-                Section {
-                    VStack(alignment: .leading, spacing: 10) {
-                        HStack {
-                            Label("字号", systemImage: "textformat.size")
-                            Spacer()
-                            Text("\(Int(script.fontSize))")
-                                .foregroundStyle(.secondary)
-                        }
-                        Slider(value: $script.fontSize, in: 12...110, step: 1)
-                    }
+            ScrollView {
+                VStack(spacing: 12) {
+                    DisplayPreviewPanel(
+                        text: displayPreviewText,
+                        fontSize: script.fontSize,
+                        textColor: script.textColorPreset.color,
+                        overlayOpacity: script.overlayOpacity
+                    )
 
-                    VStack(alignment: .leading, spacing: 10) {
-                        HStack {
-                            Label("速度", systemImage: "speedometer")
-                            Spacer()
-                            Text("\(Int(script.scrollSpeed)) 字/分")
-                                .foregroundStyle(.secondary)
-                        }
-                        Slider(value: $script.scrollSpeed, in: 20...220, step: 2)
-                    }
+                    DisplaySliderCard(
+                        title: "字号",
+                        systemName: "textformat.size",
+                        value: $script.fontSize,
+                        range: 12...110,
+                        step: 1,
+                        label: "\(Int(script.fontSize))"
+                    )
 
-                    Picker("文字颜色", selection: $script.textColorPreset) {
-                        ForEach(TextColorPreset.editorChoices) { preset in
-                            Text(preset.name).tag(preset)
-                        }
-                    }
-                    .pickerStyle(.segmented)
+                    DisplaySliderCard(
+                        title: "速度",
+                        systemName: "speedometer",
+                        value: $script.scrollSpeed,
+                        range: 20...260,
+                        step: 2,
+                        label: "\(Int(script.scrollSpeed)) 字/分"
+                    )
 
-                    VStack(alignment: .leading, spacing: 10) {
-                        HStack {
-                            Label("摄像头透明度", systemImage: "camera.aperture")
-                            Spacer()
-                            Text("\(Int(cameraTransparency * 100))%")
-                                .foregroundStyle(.secondary)
-                        }
-                        Slider(value: cameraTransparencyBinding, in: 0.18...0.82, step: 0.02)
-                    }
+                    TextColorSettingCard(selection: $script.textColorPreset)
+
+                    DisplaySliderCard(
+                        title: "摄像头透明度",
+                        systemName: "camera.aperture",
+                        value: cameraTransparencyBinding,
+                        range: 0.18...0.82,
+                        step: 0.02,
+                        label: "\(Int(cameraTransparency * 100))%"
+                    )
                 }
+                .padding(.horizontal, 14)
+                .padding(.top, 10)
+                .padding(.bottom, 128)
             }
-            .scrollContentBackground(.hidden)
+            .background(Color(.systemGroupedBackground))
         }
     }
 
     private func save() {
+        shouldDiscardOnDisappear = false
         if script.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             script.title = "未命名文稿"
         }
         store.save(script)
+    }
+
+    private func saveIfPersistable() {
+        guard canPersistScript else { return }
+        save()
+    }
+
+    private func clearContent() {
+        script.content = ""
+        if isStoredScript {
+            cancelScheduledAutosave()
+            save()
+        }
+        editorFocused = true
     }
 
     private func startPrompting() {
@@ -220,11 +291,21 @@ struct ScriptEditorView: View {
 
         editorFocused = false
         normalizeDisplaySettings()
+        cancelScheduledAutosave()
         save()
 
         DispatchQueue.main.async {
             showPrompter = true
         }
+    }
+
+    private func cancelEditing() {
+        shouldDiscardOnDisappear = true
+        cancelScheduledAutosave()
+        if let storedScript = store.script(with: script.id) {
+            store.delete(storedScript)
+        }
+        dismiss()
     }
 
     private var displayTitle: String {
@@ -243,6 +324,20 @@ struct ScriptEditorView: View {
         )
     }
 
+    private var displayPreviewText: String {
+        let lines = script.content
+            .components(separatedBy: .newlines)
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        let source = lines.first ?? "开始提词"
+
+        if source.count <= 26 {
+            return source
+        }
+
+        return String(source.prefix(26))
+    }
+
     private var editorActions: some View {
         HStack(spacing: 10) {
             editorIconButton(
@@ -257,7 +352,7 @@ struct ScriptEditorView: View {
                 label: "清空正文",
                 isDisabled: script.content.isEmpty
             ) {
-                showClearPanel = true
+                showClearConfirmation = true
             }
         }
         .frame(maxWidth: .infinity)
@@ -276,10 +371,13 @@ struct ScriptEditorView: View {
         isDisabled: Bool = false,
         action: @escaping () -> Void
     ) -> some View {
-        Button(action: action) {
+        Button {
+            Haptics.selection()
+            action()
+        } label: {
             Image(systemName: systemName)
                 .font(.system(size: 15, weight: .semibold))
-                .frame(width: 34, height: 34)
+                .frame(width: 44, height: 44)
                 .foregroundStyle(isDisabled ? Color.secondary.opacity(0.45) : Color.primary)
                 .background(.ultraThinMaterial, in: Circle())
                 .overlay(
@@ -313,52 +411,210 @@ struct ScriptEditorView: View {
         editorFocused = true
     }
 
-    private var clearPanelContent: some View {
-        VStack(spacing: 10) {
-            HStack {
-                Text("清空正文")
-                    .font(.system(size: 17, weight: .semibold, design: .rounded))
-
-                Spacer()
-
-                Button {
-                    showClearPanel = false
-                } label: {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 12, weight: .bold))
-                        .frame(width: 30, height: 30)
-                        .background(.white.opacity(0.36), in: Circle())
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("关闭")
-            }
-            .padding(.horizontal, 4)
-            .padding(.bottom, 4)
-
-            Text("正文会被清空，文稿名和显示设置会保留。")
-                .font(.system(size: 14))
-                .foregroundStyle(.secondary)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 4)
-
-            GlassActionRow(
-                systemName: "trash",
-                title: "清空正文",
-                subtitle: nil,
-                isDestructive: true
-            ) {
-                script.content = ""
-                showClearPanel = false
-                editorFocused = true
-            }
-        }
-    }
-
     private func normalizeDisplaySettings() {
         if !TextColorPreset.editorChoices.contains(script.textColorPreset) {
             script.textColorPreset = .white
         }
         script.fontSize = min(110, max(12, script.fontSize))
+    }
+
+    private func scheduleAutosave() {
+        guard canPersistScript else { return }
+        autosaveTask?.cancel()
+        autosaveTask = Task {
+            try? await Task.sleep(nanoseconds: 800_000_000)
+            guard !Task.isCancelled else { return }
+            await MainActor.run {
+                guard canPersistScript else { return }
+                autosaveTask = nil
+                save()
+            }
+        }
+    }
+
+    private func flushPendingAutosave() {
+        guard !shouldDiscardOnDisappear else {
+            cancelScheduledAutosave()
+            return
+        }
+        cancelScheduledAutosave()
+        saveIfPersistable()
+    }
+
+    private func cancelScheduledAutosave() {
+        autosaveTask?.cancel()
+        autosaveTask = nil
+    }
+
+}
+
+private struct DisplayPreviewPanel: View {
+    let text: String
+    let fontSize: Double
+    let textColor: Color
+    let overlayOpacity: Double
+
+    private var previewFontSize: CGFloat {
+        min(54, max(22, CGFloat(fontSize) * 0.72))
+    }
+
+    var body: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 24, style: .continuous)
+                .fill(cameraLikeGradient)
+                .overlay(.black.opacity(overlayOpacity))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 24, style: .continuous)
+                        .stroke(
+                            LinearGradient(
+                                colors: [
+                                    .white.opacity(0.36),
+                                    .white.opacity(0.10),
+                                    .black.opacity(0.08)
+                                ],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            ),
+                            lineWidth: 0.7
+                        )
+                )
+
+            Text(text)
+                .font(.system(size: previewFontSize, weight: .semibold, design: .rounded))
+                .multilineTextAlignment(.center)
+                .lineSpacing(max(5, previewFontSize * 0.12))
+                .foregroundStyle(textColor.opacity(0.94))
+                .lineLimit(2)
+                .minimumScaleFactor(0.82)
+                .shadow(color: .black.opacity(0.42), radius: 8, y: 2)
+                .padding(.horizontal, 24)
+        }
+        .frame(height: 156)
+        .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .shadow(color: .black.opacity(0.08), radius: 18, y: 10)
+    }
+
+    private var cameraLikeGradient: LinearGradient {
+        LinearGradient(
+            colors: [
+                Color(red: 0.72, green: 0.72, blue: 0.69),
+                Color(red: 0.38, green: 0.40, blue: 0.42),
+                Color(red: 0.15, green: 0.15, blue: 0.16)
+            ],
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
+        )
+    }
+}
+
+private struct DisplaySliderCard: View {
+    let title: String
+    let systemName: String
+    @Binding var value: Double
+    let range: ClosedRange<Double>
+    let step: Double
+    let label: String
+
+    var body: some View {
+        VStack(spacing: 16) {
+            HStack(spacing: 12) {
+                Image(systemName: systemName)
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(.primary.opacity(0.72))
+                    .frame(width: 34, height: 34)
+                    .background(.white.opacity(0.36), in: Circle())
+                    .overlay(
+                        Circle()
+                            .stroke(.white.opacity(0.46), lineWidth: 0.65)
+                    )
+
+                Text(title)
+                    .font(.system(size: 16, weight: .semibold, design: .rounded))
+                    .foregroundStyle(.primary.opacity(0.72))
+
+                Spacer(minLength: 12)
+
+                Text(label)
+                    .font(.system(size: 20, weight: .semibold, design: .rounded).monospacedDigit())
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.82)
+            }
+
+            Slider(value: $value, in: range, step: step)
+                .tint(.primary.opacity(0.72))
+        }
+        .padding(.horizontal, 16)
+        .padding(.top, 15)
+        .padding(.bottom, 14)
+        .editorSettingSurface(cornerRadius: 22)
+    }
+}
+
+private struct TextColorSettingCard: View {
+    @Binding var selection: TextColorPreset
+
+    var body: some View {
+        VStack(spacing: 14) {
+            HStack(spacing: 12) {
+                Image(systemName: "circle.lefthalf.filled")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(.primary.opacity(0.72))
+                    .frame(width: 34, height: 34)
+                    .background(.white.opacity(0.36), in: Circle())
+                    .overlay(
+                        Circle()
+                            .stroke(.white.opacity(0.46), lineWidth: 0.65)
+                    )
+
+                Text("文字颜色")
+                    .font(.system(size: 16, weight: .semibold, design: .rounded))
+                    .foregroundStyle(.primary.opacity(0.72))
+
+                Spacer()
+            }
+
+            HStack(spacing: 8) {
+                ForEach(TextColorPreset.editorChoices) { preset in
+                    Button {
+                        Haptics.selection()
+                        selection = preset
+                    } label: {
+                        HStack(spacing: 8) {
+                            Circle()
+                                .fill(preset.color)
+                                .frame(width: 14, height: 14)
+                                .overlay(
+                                    Circle()
+                                        .stroke(.black.opacity(preset == .white ? 0.12 : 0), lineWidth: 0.8)
+                                )
+
+                            Text(preset.name)
+                                .font(.system(size: 15, weight: .semibold, design: .rounded))
+                                .lineLimit(1)
+                        }
+                        .foregroundStyle(.primary)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 44)
+                        .background(
+                            Capsule()
+                                .fill(selection == preset ? .white.opacity(0.58) : .white.opacity(0.18))
+                        )
+                        .overlay(
+                            Capsule()
+                                .stroke(selection == preset ? .white.opacity(0.72) : .white.opacity(0.26), lineWidth: 0.7)
+                        )
+                        .contentShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("文字颜色\(preset.name)")
+                }
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.top, 15)
+        .padding(.bottom, 14)
+        .editorSettingSurface(cornerRadius: 22)
     }
 }
 
@@ -373,6 +629,21 @@ private enum EditorTab: String, CaseIterable, Identifiable {
         case .script: "文稿"
         case .display: "显示"
         }
+    }
+}
+
+private struct EditorDockBackground: View {
+    var body: some View {
+        LinearGradient(
+            colors: [
+                Color(.systemGroupedBackground).opacity(0),
+                Color(.systemGroupedBackground).opacity(0.74),
+                Color(.systemGroupedBackground)
+            ],
+            startPoint: .top,
+            endPoint: .bottom
+        )
+        .ignoresSafeArea()
     }
 }
 
@@ -417,6 +688,38 @@ private extension View {
                         )
                 )
                 .shadow(color: .black.opacity(0.08), radius: 14, y: 7)
+        }
+    }
+
+    @ViewBuilder
+    func editorSettingSurface(cornerRadius: CGFloat = 18) -> some View {
+        let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+
+        if #available(iOS 26.0, *) {
+            glassEffect(.regular.tint(.white.opacity(0.045)).interactive(), in: shape)
+                .background(Color(.secondarySystemGroupedBackground).opacity(0.46), in: shape)
+                .overlay(
+                    shape.stroke(
+                        LinearGradient(
+                            colors: [
+                                .white.opacity(0.54),
+                                .white.opacity(0.18),
+                                .black.opacity(0.035)
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        ),
+                        lineWidth: 0.7
+                    )
+                )
+                .shadow(color: .black.opacity(0.05), radius: 14, y: 8)
+        } else {
+            background(.ultraThinMaterial, in: shape)
+                .background(Color(.secondarySystemGroupedBackground).opacity(0.46), in: shape)
+                .overlay(
+                    shape.stroke(.white.opacity(0.34), lineWidth: 0.65)
+                )
+                .shadow(color: .black.opacity(0.045), radius: 12, y: 7)
         }
     }
 

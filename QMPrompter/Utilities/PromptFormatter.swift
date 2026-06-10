@@ -1,4 +1,5 @@
 import Foundation
+import UIKit
 
 struct PromptLine: Identifiable, Equatable {
     let id = UUID()
@@ -16,7 +17,7 @@ enum PromptFormatter {
         for paragraph in normalized.components(separatedBy: "\n") {
             let trimmed = paragraph.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !trimmed.isEmpty else {
-                result.append(PromptLine(text: "", characterCount: targetCharactersPerLine))
+                result.append(PromptLine(text: "", characterCount: 0))
                 continue
             }
             result.append(contentsOf: split(trimmed, target: targetCharactersPerLine))
@@ -28,15 +29,15 @@ enum PromptFormatter {
         var lines: [PromptLine] = []
         var current = ""
         let semanticMinimumLength = max(8, target)
-        let hardLimit = max(semanticMinimumLength, target + 4, Int((Double(target) * 1.35).rounded(.up)))
+        let hardMaximumLength = max(semanticMinimumLength * 2, target + 10)
 
         for character in text {
             current.append(character)
-            let shouldBreakAtStrongPunctuation = "。！？；.!?;：:".contains(character) && current.count >= 4
-            let shouldBreakAtSoftPunctuation = "，、,".contains(character) && current.count >= semanticMinimumLength
-            let shouldBreakAtLength = current.count >= hardLimit
+            let shouldBreakAtStrongPunctuation = "。！？；.!?;".contains(character) && current.count >= 4
+            let shouldBreakAtSoftPunctuation = "，、,：:".contains(character) && current.count >= semanticMinimumLength
+            let shouldBreakLongPhrase = current.count >= hardMaximumLength
 
-            if shouldBreakAtStrongPunctuation || shouldBreakAtSoftPunctuation || shouldBreakAtLength {
+            if shouldBreakAtStrongPunctuation || shouldBreakAtSoftPunctuation || shouldBreakLongPhrase {
                 append(current, to: &lines, fallbackCount: target)
                 current = ""
             }
@@ -59,5 +60,28 @@ enum PromptFormatter {
 
     private static func containsSpeakableCharacter(_ text: String) -> Bool {
         text.contains { $0.isLetter || $0.isNumber }
+    }
+}
+
+@MainActor
+enum Haptics {
+    static func selection() {
+        UISelectionFeedbackGenerator().selectionChanged()
+    }
+
+    static func lightImpact() {
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+    }
+
+    static func mediumImpact() {
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+    }
+
+    static func success() {
+        UINotificationFeedbackGenerator().notificationOccurred(.success)
+    }
+
+    static func warning() {
+        UINotificationFeedbackGenerator().notificationOccurred(.warning)
     }
 }

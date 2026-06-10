@@ -23,6 +23,7 @@ final class SpeechFollower: ObservableObject {
     private var startTask: Task<Void, Never>?
     private var scriptIndex = SpeechScriptIndex(content: "")
     private var inputTapInstalled = false
+    private var recognitionSessionID = UUID()
 
     var isListening: Bool {
         state == .listening
@@ -55,6 +56,7 @@ final class SpeechFollower: ObservableObject {
     }
 
     func stop() {
+        recognitionSessionID = UUID()
         startTask?.cancel()
         startTask = nil
 
@@ -142,14 +144,18 @@ final class SpeechFollower: ObservableObject {
         }
 
         state = .listening
+        let sessionID = UUID()
+        recognitionSessionID = sessionID
         recognitionTask = speechRecognizer.recognitionTask(with: request) { [weak self] result, error in
             Task { @MainActor in
-                self?.handleRecognition(result: result, error: error)
+                self?.handleRecognition(result: result, error: error, sessionID: sessionID)
             }
         }
     }
 
-    private func handleRecognition(result: SFSpeechRecognitionResult?, error: Error?) {
+    private func handleRecognition(result: SFSpeechRecognitionResult?, error: Error?, sessionID: UUID) {
+        guard sessionID == recognitionSessionID else { return }
+
         if let result {
             transcript = result.bestTranscription.formattedString
             progress = scriptIndex.progress(for: transcript)
@@ -223,7 +229,10 @@ private struct SpeechScriptIndex {
         }
 
         if let matchOffset = bestMatchEndOffset(for: spoken) {
-            committedOffset = max(committedOffset, matchOffset)
+            committedOffset = max(
+                committedOffset,
+                boundedMatchOffset(matchOffset, spokenCount: spoken.count)
+            )
         } else if committedOffset == 0 {
             committedOffset = max(committedOffset, commonPrefixCount(spoken))
         }
@@ -235,7 +244,7 @@ private struct SpeechScriptIndex {
         var best: (endOffset: Int, score: Int)?
 
         for fragment in candidateFragments(for: spoken) {
-            for range in ranges(of: fragment) {
+            for range in ranges(of: fragment, in: searchRange(fragmentLength: fragment.count)) {
                 let startOffset = normalizedContent.distance(from: normalizedContent.startIndex, to: range.lowerBound)
                 let endOffset = normalizedContent.distance(from: normalizedContent.startIndex, to: range.upperBound)
                 guard isPlausibleMatch(startOffset: startOffset, endOffset: endOffset, fragmentLength: fragment.count) else {
@@ -278,22 +287,56 @@ private struct SpeechScriptIndex {
         return fragments
     }
 
-    private func ranges(of fragment: String) -> [Range<String.Index>] {
+    private func ranges(of fragment: String, in range: Range<String.Index>) -> [Range<String.Index>] {
+        guard !range.isEmpty else { return [] }
+
         var ranges: [Range<String.Index>] = []
-        var searchRange = normalizedContent.startIndex..<normalizedContent.endIndex
+        var searchRange = range
 
         while let range = normalizedContent.range(of: fragment, range: searchRange) {
             ranges.append(range)
-            searchRange = range.upperBound..<normalizedContent.endIndex
+            searchRange = range.upperBound..<searchRange.upperBound
         }
 
         return ranges
     }
 
+    private func searchRange(fragmentLength: Int) -> Range<String.Index> {
+        guard !normalizedContent.isEmpty else {
+            return normalizedContent.startIndex..<normalizedContent.startIndex
+        }
+
+        if committedOffset == 0 {
+            let upperOffset = min(
+                normalizedContent.count,
+                max(48, fragmentLength * 4)
+            )
+            return normalizedContent.startIndex..<index(atOffset: upperOffset)
+        }
+
+        let backwardTolerance = max(18, fragmentLength * 2)
+        let forwardTolerance = fragmentLength < 8 ? max(48, fragmentLength * 6) : max(120, fragmentLength * 10)
+        let lowerOffset = max(0, committedOffset - backwardTolerance)
+        let upperOffset = min(normalizedContent.count, committedOffset + forwardTolerance)
+
+        return index(atOffset: lowerOffset)..<index(atOffset: upperOffset)
+    }
+
+    private func index(atOffset offset: Int) -> String.Index {
+        normalizedContent.index(
+            normalizedContent.startIndex,
+            offsetBy: min(max(0, offset), normalizedContent.count)
+        )
+    }
+
     private func isPlausibleMatch(startOffset: Int, endOffset: Int, fragmentLength: Int) -> Bool {
         if committedOffset == 0 {
-            let earlyWindow = min(max(80, normalizedContent.count / 5), max(80, fragmentLength * 16))
-            return fragmentLength >= 8 || startOffset <= earlyWindow
+            guard fragmentLength >= 6 else {
+                return startOffset <= 8
+            }
+
+            let earlyWindow = max(12, min(40, fragmentLength * 2))
+            return startOffset <= earlyWindow
         }
 
         let backwardTolerance = max(12, fragmentLength * 2)
@@ -301,8 +344,8 @@ private struct SpeechScriptIndex {
             return false
         }
 
-        let forwardTolerance = max(80, fragmentLength * 18)
-        if fragmentLength < 12, startOffset > committedOffset + forwardTolerance {
+        let forwardTolerance = fragmentLength < 8 ? max(22, fragmentLength * 4) : max(56, fragmentLength * 8)
+        if startOffset > committedOffset + forwardTolerance {
             return false
         }
 
@@ -312,12 +355,18 @@ private struct SpeechScriptIndex {
     private func matchScore(startOffset: Int, endOffset: Int, fragmentLength: Int) -> Int {
         let anchorDistance = abs(startOffset - committedOffset)
         let backwardPenalty = max(0, committedOffset - endOffset)
-        let initialPenalty = committedOffset == 0 ? startOffset * 3 : 0
+        let initialPenalty = committedOffset == 0 ? startOffset * 20 : 0
 
         return fragmentLength * 1_000
-            - anchorDistance * 3
+            - anchorDistance * 5
             - backwardPenalty * 8
             - initialPenalty
+    }
+
+    private func boundedMatchOffset(_ matchOffset: Int, spokenCount: Int) -> Int {
+        guard matchOffset > committedOffset else { return matchOffset }
+        let maximumAdvance = max(18, min(140, spokenCount * 2 + 10))
+        return min(matchOffset, committedOffset + maximumAdvance)
     }
 
     private func progress(atOffset offset: Int) -> Double {
