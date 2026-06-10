@@ -11,6 +11,7 @@ final class PromptDictation: ObservableObject {
     private let audioEngine = AVAudioEngine()
     private var recognitionRequest: SFSpeechAudioBufferRecognitionRequest?
     private var recognitionTask: SFSpeechRecognitionTask?
+    private var startTask: Task<Void, Never>?
     private var inputTapInstalled = false
     private var recognitionSessionID = UUID()
     private var intentionallyStoppedSessionIDs: Set<UUID> = []
@@ -24,14 +25,22 @@ final class PromptDictation: ObservableObject {
     }
 
     func start() {
-        Task {
-            await startRecording()
+        startTask?.cancel()
+        stopRecognitionSession(markIntentionallyStopped: true)
+        startTask = Task { [weak self] in
+            await self?.startRecording()
         }
     }
 
     func stop() {
+        startTask?.cancel()
+        startTask = nil
+        stopRecognitionSession(markIntentionallyStopped: true)
+    }
+
+    private func stopRecognitionSession(markIntentionallyStopped: Bool) {
         let stoppedSessionID = recognitionSessionID
-        if hasActiveRecognitionSession {
+        if markIntentionallyStopped && hasActiveRecognitionSession {
             intentionallyStoppedSessionIDs.insert(stoppedSessionID)
             trimStoppedSessionIDsIfNeeded(keeping: stoppedSessionID)
         }
@@ -70,20 +79,24 @@ final class PromptDictation: ObservableObject {
     }
 
     private func startRecording() async {
-        stop()
         errorMessage = nil
         transcript = ""
 
-        guard await requestSpeechAuthorization() else {
+        let isSpeechAuthorized = await requestSpeechAuthorization()
+        guard !Task.isCancelled else { return }
+        guard isSpeechAuthorized else {
             errorMessage = "语音识别权限未开启。"
             return
         }
 
-        guard await requestMicrophonePermission() else {
+        let isMicrophoneAuthorized = await requestMicrophonePermission()
+        guard !Task.isCancelled else { return }
+        guard isMicrophoneAuthorized else {
             errorMessage = "麦克风权限未开启。"
             return
         }
 
+        guard !Task.isCancelled else { return }
         guard let speechRecognizer, speechRecognizer.isAvailable else {
             errorMessage = "当前语音识别不可用。"
             return
@@ -112,8 +125,17 @@ final class PromptDictation: ObservableObject {
             audioEngine.prepare()
             try audioEngine.start()
         } catch {
+            guard !Task.isCancelled else {
+                stopRecognitionSession(markIntentionallyStopped: true)
+                return
+            }
             errorMessage = "麦克风启动失败。"
-            stop()
+            stopRecognitionSession(markIntentionallyStopped: false)
+            return
+        }
+
+        guard !Task.isCancelled else {
+            stopRecognitionSession(markIntentionallyStopped: true)
             return
         }
 
