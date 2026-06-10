@@ -63,7 +63,21 @@ struct AIScriptGenerator {
         )
         request.httpBody = try JSONEncoder().encode(body)
 
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let data: Data
+        let response: URLResponse
+
+        do {
+            (data, response) = try await AIHTTPClient.data(for: request)
+        } catch {
+            throw GenerationError.server(
+                AIHTTPClient.errorMessage(
+                    for: error,
+                    providerTitle: configuration.provider.title,
+                    url: endpoint
+                )
+            )
+        }
+
         try validate(response: response, data: data)
 
         let decoded = try JSONDecoder().decode(ChatCompletionsResponse.self, from: data)
@@ -95,7 +109,21 @@ struct AIScriptGenerator {
         )
         request.httpBody = try JSONEncoder().encode(body)
 
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let data: Data
+        let response: URLResponse
+
+        do {
+            (data, response) = try await AIHTTPClient.data(for: request)
+        } catch {
+            throw GenerationError.server(
+                AIHTTPClient.errorMessage(
+                    for: error,
+                    providerTitle: configuration.provider.title,
+                    url: endpoint
+                )
+            )
+        }
+
         try validate(response: response, data: data)
 
         let decoded = try JSONDecoder().decode(AnthropicMessagesResponse.self, from: data)

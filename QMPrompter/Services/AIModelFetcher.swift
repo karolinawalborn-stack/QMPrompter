@@ -47,7 +47,21 @@ struct AIModelFetcher {
             request.setValue("2023-06-01", forHTTPHeaderField: "anthropic-version")
         }
 
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let data: Data
+        let response: URLResponse
+
+        do {
+            (data, response) = try await AIHTTPClient.data(for: request)
+        } catch {
+            throw FetchError.server(
+                AIHTTPClient.errorMessage(
+                    for: error,
+                    providerTitle: configuration.provider.title,
+                    url: endpoint
+                )
+            )
+        }
+
         guard let httpResponse = response as? HTTPURLResponse else {
             throw FetchError.server("\(configuration.provider.title) 返回格式异常。")
         }
