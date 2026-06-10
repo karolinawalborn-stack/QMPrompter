@@ -49,7 +49,7 @@ struct AIScriptGenerator {
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("Bearer \(configuration.apiKey)", forHTTPHeaderField: "Authorization")
-        request.timeoutInterval = 90
+        request.timeoutInterval = 180
 
         let body = ChatCompletionsRequest(
             model: configuration.model,
@@ -63,7 +63,21 @@ struct AIScriptGenerator {
         )
         request.httpBody = try JSONEncoder().encode(body)
 
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let data: Data
+        let response: URLResponse
+
+        do {
+            (data, response) = try await AIHTTPClient.data(for: request)
+        } catch {
+            throw GenerationError.server(
+                AIHTTPClient.errorMessage(
+                    for: error,
+                    providerTitle: configuration.provider.title,
+                    url: endpoint
+                )
+            )
+        }
+
         try validate(response: response, data: data)
 
         let decoded = try JSONDecoder().decode(ChatCompletionsResponse.self, from: data)
@@ -82,7 +96,7 @@ struct AIScriptGenerator {
         request.setValue(configuration.apiKey, forHTTPHeaderField: "x-api-key")
         request.setValue("Bearer \(configuration.apiKey)", forHTTPHeaderField: "Authorization")
         request.setValue("2023-06-01", forHTTPHeaderField: "anthropic-version")
-        request.timeoutInterval = 90
+        request.timeoutInterval = 180
 
         let body = AnthropicMessagesRequest(
             model: configuration.model,
@@ -95,7 +109,21 @@ struct AIScriptGenerator {
         )
         request.httpBody = try JSONEncoder().encode(body)
 
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let data: Data
+        let response: URLResponse
+
+        do {
+            (data, response) = try await AIHTTPClient.data(for: request)
+        } catch {
+            throw GenerationError.server(
+                AIHTTPClient.errorMessage(
+                    for: error,
+                    providerTitle: configuration.provider.title,
+                    url: endpoint
+                )
+            )
+        }
+
         try validate(response: response, data: data)
 
         let decoded = try JSONDecoder().decode(AnthropicMessagesResponse.self, from: data)
@@ -145,6 +173,10 @@ struct AIScriptGenerator {
         switch endpoint {
         case .chatCompletions:
             guard !path.hasSuffix("chat/completions") else { return url }
+            if configuration.provider == .openAICompatible,
+               path.isEmpty {
+                url.appendPathComponent("v1")
+            }
             url.appendPathComponent("chat")
             url.appendPathComponent("completions")
             return url

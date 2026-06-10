@@ -1,7 +1,7 @@
 import Foundation
 import Security
 
-enum AIProvider: String, CaseIterable, Codable, Identifiable {
+enum AIProvider: String, CaseIterable, Codable, Hashable, Identifiable {
     case deepSeek
     case openAICompatible
     case anthropicCompatible
@@ -30,16 +30,32 @@ enum AIProvider: String, CaseIterable, Codable, Identifiable {
     var defaultBaseURL: String {
         switch self {
         case .deepSeek: "https://api.deepseek.com"
-        case .openAICompatible: "https://api.openai.com/v1"
-        case .anthropicCompatible: "https://api.anthropic.com"
+        case .openAICompatible: "https://api.aigocode.app"
+        case .anthropicCompatible: "https://api.aigocode.app"
+        }
+    }
+
+    var legacyDefaultBaseURLs: [String] {
+        switch self {
+        case .deepSeek: []
+        case .openAICompatible: ["https://api.aigocode.com", "https://api.openai.com/v1"]
+        case .anthropicCompatible: ["https://api.aigocode.com", "https://api.anthropic.com"]
         }
     }
 
     var defaultModel: String {
         switch self {
         case .deepSeek: "deepseek-v4-flash"
-        case .openAICompatible: "gpt-4o-mini"
-        case .anthropicCompatible: "claude-sonnet-4-20250514"
+        case .openAICompatible: "gpt-5.4-mini"
+        case .anthropicCompatible: "claude-sonnet-4-6"
+        }
+    }
+
+    var legacyDefaultModels: [String] {
+        switch self {
+        case .deepSeek: []
+        case .openAICompatible: ["gpt-4o-mini"]
+        case .anthropicCompatible: ["claude-sonnet-4-20250514"]
         }
     }
 
@@ -53,20 +69,18 @@ enum AIProvider: String, CaseIterable, Codable, Identifiable {
             ]
         case .openAICompatible:
             [
-                AIModelOption("gpt-4o-mini", title: "GPT-4o mini", detail: "OpenAI 官方"),
-                AIModelOption("gpt-4o", title: "GPT-4o", detail: "OpenAI 官方"),
-                AIModelOption("o3-mini", title: "o3 mini", detail: "OpenAI 官方"),
-                AIModelOption("anthropic/claude-sonnet-4", title: "Claude Sonnet 4", detail: "OpenRouter"),
-                AIModelOption("claude-sonnet-4-20250514", title: "Claude Sonnet 4", detail: "兼容中转"),
-                AIModelOption("deepseek-chat", title: "DeepSeek Chat"),
-                AIModelOption("deepseek-reasoner", title: "DeepSeek Reasoner"),
-                AIModelOption("qwen-max", title: "Qwen Max")
+                AIModelOption("gpt-5.4-mini", title: "GPT-5.4 mini", detail: "默认"),
+                AIModelOption("gpt-5.4", title: "GPT-5.4", detail: "已验证"),
+                AIModelOption("gpt-5.5", title: "GPT-5.5", detail: "已验证"),
+                AIModelOption("codex-auto-review", title: "Codex Auto Review", detail: "已验证")
             ]
         case .anthropicCompatible:
             [
-                AIModelOption("claude-sonnet-4-20250514", title: "Claude Sonnet 4", detail: "推荐"),
-                AIModelOption("claude-opus-4-20250514", title: "Claude Opus 4"),
-                AIModelOption("claude-3-5-haiku-latest", title: "Claude Haiku")
+                AIModelOption("claude-sonnet-4-6", title: "Claude Sonnet 4.6", detail: "默认"),
+                AIModelOption("claude-haiku-4-5-20251001", title: "Claude Haiku 4.5", detail: "已验证"),
+                AIModelOption("claude-opus-4-6", title: "Claude Opus 4.6"),
+                AIModelOption("claude-opus-4-7", title: "Claude Opus 4.7"),
+                AIModelOption("claude-opus-4-8", title: "Claude Opus 4.8")
             ]
         }
     }
@@ -76,6 +90,29 @@ enum AIProvider: String, CaseIterable, Codable, Identifiable {
         case .deepSeek, .openAICompatible: "sk-..."
         case .anthropicCompatible: "sk-ant-... 或第三方 token"
         }
+    }
+
+    func matchesDefaultBaseURL(_ value: String) -> Bool {
+        let normalizedValue = Self.normalizedBaseURL(value)
+        guard !normalizedValue.isEmpty else { return true }
+
+        let defaults = [defaultBaseURL] + legacyDefaultBaseURLs
+        return defaults.contains { Self.normalizedBaseURL($0) == normalizedValue }
+    }
+
+    func matchesDefaultModel(_ value: String) -> Bool {
+        let normalizedValue = value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !normalizedValue.isEmpty else { return true }
+
+        let defaults = [defaultModel] + legacyDefaultModels
+        return defaults.contains { $0.lowercased() == normalizedValue }
+    }
+
+    private static func normalizedBaseURL(_ value: String) -> String {
+        value
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+            .lowercased()
     }
 }
 
@@ -105,8 +142,6 @@ final class APIKeyStore: ObservableObject {
     @Published var baseURL: String
     @Published var model: String
 
-    private let account = "ai-api-key"
-    private let legacyDeepSeekAccount = "deepseek-api-key"
     private let service = "com.qiaomu.Prompter"
     private let defaults = UserDefaults.standard
 
@@ -114,6 +149,14 @@ final class APIKeyStore: ObservableObject {
         static let provider = "ai.provider"
         static let baseURL = "ai.baseURL"
         static let model = "ai.model"
+
+        static func baseURL(for provider: AIProvider) -> String {
+            "ai.\(provider.rawValue).baseURL"
+        }
+
+        static func model(for provider: AIProvider) -> String {
+            "ai.\(provider.rawValue).model"
+        }
     }
 
     var hasAPIKey: Bool {
@@ -132,42 +175,154 @@ final class APIKeyStore: ObservableObject {
     init() {
         let savedProvider = defaults.string(forKey: DefaultsKey.provider)
             .flatMap(AIProvider.init(rawValue:)) ?? .deepSeek
+        Self.migrateLegacyCredentials(currentProvider: savedProvider, service: service)
         provider = savedProvider
-        apiKey = Self.read(account: account, service: service) ??
-            Self.read(account: legacyDeepSeekAccount, service: service) ?? ""
-        baseURL = defaults.string(forKey: DefaultsKey.baseURL) ?? savedProvider.defaultBaseURL
-        model = defaults.string(forKey: DefaultsKey.model) ?? savedProvider.defaultModel
+        apiKey = Self.apiKey(for: savedProvider, service: service)
+        baseURL = Self.initialBaseURL(
+            Self.savedBaseURL(for: savedProvider, currentProvider: savedProvider, defaults: defaults),
+            provider: savedProvider
+        )
+        model = Self.initialModel(
+            Self.savedModel(for: savedProvider, currentProvider: savedProvider, defaults: defaults),
+            provider: savedProvider
+        )
+        persistCurrentProviderValues()
     }
 
     func save() {
+        saveSettings(for: provider, apiKey: apiKey, baseURL: baseURL, model: model)
+        selectProvider(provider)
+    }
+
+    func apiKey(for provider: AIProvider) -> String {
+        Self.apiKey(for: provider, service: service)
+    }
+
+    func baseURL(for provider: AIProvider) -> String {
+        Self.initialBaseURL(
+            Self.savedBaseURL(for: provider, currentProvider: self.provider, defaults: defaults),
+            provider: provider
+        )
+    }
+
+    func model(for provider: AIProvider) -> String {
+        Self.initialModel(
+            Self.savedModel(for: provider, currentProvider: self.provider, defaults: defaults),
+            provider: provider
+        )
+    }
+
+    func saveSettings(for provider: AIProvider, apiKey: String, baseURL: String, model: String) {
         let key = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
-        let nextBaseURL = resolvedBaseURL
-        let nextModel = resolvedModel
+        let nextBaseURL = Self.resolvedBaseURL(baseURL, provider: provider)
+        let nextModel = Self.resolvedModel(model, provider: provider)
 
-        apiKey = key
-        baseURL = nextBaseURL
-        model = nextModel
-
-        defaults.set(provider.rawValue, forKey: DefaultsKey.provider)
-        defaults.set(nextBaseURL, forKey: DefaultsKey.baseURL)
-        defaults.set(nextModel, forKey: DefaultsKey.model)
+        defaults.set(nextBaseURL, forKey: DefaultsKey.baseURL(for: provider))
+        defaults.set(nextModel, forKey: DefaultsKey.model(for: provider))
 
         if key.isEmpty {
-            Self.delete(account: account, service: service)
+            Self.delete(account: Self.account(for: provider), service: service)
         } else {
-            Self.save(key, account: account, service: service)
+            Self.save(key, account: Self.account(for: provider), service: service)
         }
-        Self.delete(account: legacyDeepSeekAccount, service: service)
+    }
+
+    func selectProvider(_ provider: AIProvider) {
+        self.provider = provider
+        self.apiKey = apiKey(for: provider)
+        self.baseURL = baseURL(for: provider)
+        self.model = model(for: provider)
+        defaults.set(provider.rawValue, forKey: DefaultsKey.provider)
+        persistCurrentProviderValues()
     }
 
     private var resolvedBaseURL: String {
+        Self.resolvedBaseURL(baseURL, provider: provider)
+    }
+
+    private var resolvedModel: String {
+        Self.resolvedModel(model, provider: provider)
+    }
+
+    private func persistCurrentProviderValues() {
+        defaults.set(provider.rawValue, forKey: DefaultsKey.provider)
+        defaults.set(baseURL, forKey: DefaultsKey.baseURL(for: provider))
+        defaults.set(model, forKey: DefaultsKey.model(for: provider))
+        defaults.removeObject(forKey: DefaultsKey.baseURL)
+        defaults.removeObject(forKey: DefaultsKey.model)
+
+        if !apiKey.isEmpty, Self.read(account: Self.account(for: provider), service: service) == nil {
+            Self.save(apiKey, account: Self.account(for: provider), service: service)
+        }
+    }
+
+    private static func resolvedBaseURL(_ baseURL: String, provider: AIProvider) -> String {
         let value = baseURL.trimmingCharacters(in: .whitespacesAndNewlines)
         return value.isEmpty ? provider.defaultBaseURL : value
     }
 
-    private var resolvedModel: String {
+    private static func resolvedModel(_ model: String, provider: AIProvider) -> String {
         let value = model.trimmingCharacters(in: .whitespacesAndNewlines)
         return value.isEmpty ? provider.defaultModel : value
+    }
+
+    private static func account(for provider: AIProvider) -> String {
+        "ai-api-key.\(provider.rawValue)"
+    }
+
+    private static func apiKey(for provider: AIProvider, service: String) -> String {
+        read(account: account(for: provider), service: service) ?? ""
+    }
+
+    private static let legacySharedAccount = "ai-api-key"
+    private static let legacyDeepSeekAccount = "deepseek-api-key"
+
+    private static func migrateLegacyCredentials(currentProvider: AIProvider, service: String) {
+        if read(account: account(for: .deepSeek), service: service) == nil,
+           let legacyDeepSeekKey = read(account: legacyDeepSeekAccount, service: service) {
+            save(legacyDeepSeekKey, account: account(for: .deepSeek), service: service)
+        }
+
+        if read(account: account(for: currentProvider), service: service) == nil,
+           let legacySharedKey = read(account: legacySharedAccount, service: service) {
+            save(legacySharedKey, account: account(for: currentProvider), service: service)
+        }
+    }
+
+    private static func savedBaseURL(
+        for provider: AIProvider,
+        currentProvider: AIProvider,
+        defaults: UserDefaults
+    ) -> String? {
+        defaults.string(forKey: DefaultsKey.baseURL(for: provider)) ??
+            (provider == currentProvider ? defaults.string(forKey: DefaultsKey.baseURL) : nil)
+    }
+
+    private static func savedModel(
+        for provider: AIProvider,
+        currentProvider: AIProvider,
+        defaults: UserDefaults
+    ) -> String? {
+        defaults.string(forKey: DefaultsKey.model(for: provider)) ??
+            (provider == currentProvider ? defaults.string(forKey: DefaultsKey.model) : nil)
+    }
+
+    private static func initialBaseURL(_ savedBaseURL: String?, provider: AIProvider) -> String {
+        guard let savedBaseURL else {
+            return provider.defaultBaseURL
+        }
+
+        let trimmedBaseURL = savedBaseURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        return provider.matchesDefaultBaseURL(trimmedBaseURL) ? provider.defaultBaseURL : trimmedBaseURL
+    }
+
+    private static func initialModel(_ savedModel: String?, provider: AIProvider) -> String {
+        guard let savedModel else {
+            return provider.defaultModel
+        }
+
+        let trimmedModel = savedModel.trimmingCharacters(in: .whitespacesAndNewlines)
+        return provider.matchesDefaultModel(trimmedModel) ? provider.defaultModel : trimmedModel
     }
 
     private static func save(_ value: String, account: String, service: String) {

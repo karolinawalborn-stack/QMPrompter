@@ -1,6 +1,12 @@
 import SwiftUI
 import UIKit
 
+private struct ProviderSettingsDraft {
+    var apiKey: String
+    var baseURL: String
+    var model: String
+}
+
 struct AppSettingsView: View {
     @Environment(\.dismiss) private var dismiss
     @ObservedObject var apiKeyStore: APIKeyStore
@@ -8,19 +14,43 @@ struct AppSettingsView: View {
     @State private var apiKeyDraft: String
     @State private var baseURLDraft: String
     @State private var modelDraft: String
+    @State private var providerSettingsDrafts: [AIProvider: ProviderSettingsDraft]
     @State private var showAdvancedConnection = false
     @State private var showCustomModelField: Bool
+    @State private var remoteModelOptions: [AIModelOption] = []
+    @State private var isFetchingModels = false
+    @State private var isTestingConnection = false
+    @State private var modelFetchMessage: String?
+    @State private var connectionTestMessage: String?
+    @State private var showModelPicker = false
+    @State private var showProviderPicker = false
+    @State private var modelFetchTask: Task<Void, Never>?
+    @State private var connectionTestTask: Task<Void, Never>?
+    @State private var lastModelFetchSignature: String?
     @FocusState private var focusedField: SettingsField?
 
     init(apiKeyStore: APIKeyStore) {
         let initialProvider = apiKeyStore.provider
         let initialModel = apiKeyStore.model.trimmingCharacters(in: .whitespacesAndNewlines)
+        let drafts = Dictionary(
+            uniqueKeysWithValues: AIProvider.allCases.map { provider in
+                (
+                    provider,
+                    ProviderSettingsDraft(
+                        apiKey: apiKeyStore.apiKey(for: provider),
+                        baseURL: apiKeyStore.baseURL(for: provider),
+                        model: apiKeyStore.model(for: provider)
+                    )
+                )
+            }
+        )
 
         self.apiKeyStore = apiKeyStore
         _providerDraft = State(initialValue: initialProvider)
         _apiKeyDraft = State(initialValue: apiKeyStore.apiKey)
         _baseURLDraft = State(initialValue: apiKeyStore.baseURL)
         _modelDraft = State(initialValue: apiKeyStore.model)
+        _providerSettingsDrafts = State(initialValue: drafts)
         _showCustomModelField = State(initialValue: AppSettingsView.isCustomModel(initialModel, provider: initialProvider))
     }
 
@@ -63,6 +93,33 @@ struct AppSettingsView: View {
                     .fontWeight(.semibold)
                 }
             }
+            .sheet(isPresented: $showModelPicker) {
+                ModelPickerSheet(
+                    providerTitle: providerDraft.title,
+                    options: combinedModelOptions,
+                    selectedModel: normalizedModel
+                ) { model in
+                    selectModel(model)
+                    showModelPicker = false
+                } onCustomModel: {
+                    showCustomModelField = true
+                    focusedField = .model
+                    showModelPicker = false
+                }
+            }
+            .confirmationDialog("AI 服务", isPresented: $showProviderPicker, titleVisibility: .visible) {
+                ForEach(AIProvider.allCases) { provider in
+                    Button(provider.title) {
+                        changeProvider(to: provider)
+                    }
+                }
+
+                Button("取消", role: .cancel) {}
+            }
+            .onDisappear {
+                modelFetchTask?.cancel()
+                connectionTestTask?.cancel()
+            }
         }
     }
 
@@ -75,14 +132,9 @@ struct AppSettingsView: View {
 
                 Spacer()
 
-                Menu {
-                    ForEach(AIProvider.allCases) { provider in
-                        Button {
-                            changeProvider(to: provider)
-                        } label: {
-                            Label(provider.title, systemImage: provider == providerDraft ? "checkmark" : "circle")
-                        }
-                    }
+                Button {
+                    focusedField = nil
+                    showProviderPicker = true
                 } label: {
                     HStack(spacing: 6) {
                         Text(providerDraft.title)
@@ -100,8 +152,10 @@ struct AppSettingsView: View {
                         Capsule()
                             .stroke(.white.opacity(0.42), lineWidth: 0.6)
                     )
+                    .contentShape(Capsule())
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel("切换 AI 服务")
             }
 
             Text(providerDraft.subtitle)
@@ -211,6 +265,7 @@ struct AppSettingsView: View {
             )
 
             modelSelectionField
+            connectionTestButton
         }
     }
 
@@ -220,53 +275,39 @@ struct AppSettingsView: View {
                 .font(.caption.weight(.medium))
                 .foregroundStyle(.secondary)
 
-            Menu {
-                ForEach(providerDraft.modelOptions) { option in
-                    Button {
-                        selectModel(option.id)
-                    } label: {
-                        Label(option.title, systemImage: normalizedModel == option.id ? "checkmark" : "circle")
-                    }
+            HStack(spacing: 8) {
+                Button {
+                    openModelPicker()
+                } label: {
+                    modelSelectionLabel
                 }
-
-                Divider()
+                .buttonStyle(.plain)
+                .accessibilityLabel("搜索选择模型")
 
                 Button {
-                    showCustomModelField = true
-                    focusedField = .model
+                    fetchRemoteModels()
                 } label: {
-                    Label("自定义模型", systemImage: showCustomModelField ? "checkmark" : "pencil")
-                }
-            } label: {
-                HStack(spacing: 10) {
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text(selectedModelTitle)
-                            .font(.system(size: 15, weight: .semibold))
-                            .foregroundStyle(.primary)
-                            .lineLimit(1)
-
-                        Text(normalizedModel)
-                            .font(.caption.monospacedDigit())
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
+                    ZStack {
+                        if isFetchingModels {
+                            ProgressView()
+                                .controlSize(.small)
+                        } else {
+                            Image(systemName: "arrow.clockwise")
+                                .font(.system(size: 15, weight: .semibold))
+                        }
                     }
-
-                    Spacer(minLength: 8)
-
-                    Image(systemName: "chevron.up.chevron.down")
-                        .font(.system(size: 12, weight: .bold))
-                        .foregroundStyle(.secondary)
+                    .frame(width: 52, height: 52)
+                    .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 15, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 15, style: .continuous)
+                            .stroke(.white.opacity(0.30), lineWidth: 0.7)
+                    )
+                    .contentShape(RoundedRectangle(cornerRadius: 15, style: .continuous))
                 }
-                .padding(.horizontal, 14)
-                .frame(height: 52)
-                .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 15, style: .continuous))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 15, style: .continuous)
-                        .stroke(.white.opacity(0.30), lineWidth: 0.7)
-                )
+                .buttonStyle(.plain)
+                .disabled(isFetchingModels)
+                .accessibilityLabel("从服务器刷新模型列表")
             }
-            .buttonStyle(.plain)
-            .accessibilityLabel("选择模型")
 
             if showCustomModelField {
                 TextField(providerDraft.defaultModel, text: $modelDraft)
@@ -285,8 +326,96 @@ struct AppSettingsView: View {
                     )
                     .transition(.move(edge: .top).combined(with: .opacity))
             }
+
+            if let modelFetchMessage {
+                Text(modelFetchMessage)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .transition(.opacity)
+            }
         }
         .animation(.snappy(duration: 0.18), value: showCustomModelField)
+        .animation(.snappy(duration: 0.18), value: modelFetchMessage)
+    }
+
+    private var connectionTestButton: some View {
+        VStack(alignment: .leading, spacing: 7) {
+            Button {
+                testConnection()
+            } label: {
+                HStack(spacing: 10) {
+                    ZStack {
+                        if isTestingConnection {
+                            ProgressView()
+                                .controlSize(.small)
+                        } else {
+                            Image(systemName: "network")
+                                .font(.system(size: 15, weight: .semibold))
+                        }
+                    }
+                    .frame(width: 24)
+
+                    Text(isTestingConnection ? "正在测试" : "测试连接")
+                        .font(.system(size: 15, weight: .semibold))
+
+                    Spacer()
+
+                    Image(systemName: "checkmark.seal")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                }
+                .foregroundStyle(.primary)
+                .padding(.horizontal, 14)
+                .frame(height: 50)
+                .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 15, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 15, style: .continuous)
+                        .stroke(.white.opacity(0.30), lineWidth: 0.7)
+                )
+            }
+            .buttonStyle(.plain)
+            .disabled(isTestingConnection)
+            .accessibilityLabel("测试当前 AI 服务连接")
+
+            if let connectionTestMessage {
+                Text(connectionTestMessage)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .transition(.opacity)
+            }
+        }
+        .animation(.snappy(duration: 0.18), value: connectionTestMessage)
+    }
+
+    private var modelSelectionLabel: some View {
+        HStack(spacing: 10) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(selectedModelTitle)
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+
+                Text(normalizedModel)
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+
+            Spacer(minLength: 8)
+
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(.secondary)
+        }
+        .padding(.horizontal, 14)
+        .frame(height: 52)
+        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 15, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 15, style: .continuous)
+                .stroke(.white.opacity(0.30), lineWidth: 0.7)
+        )
     }
 
     private func settingsTextField(
@@ -329,10 +458,43 @@ struct AppSettingsView: View {
     }
 
     private var selectedModelTitle: String {
-        if let option = providerDraft.modelOptions.first(where: { $0.id == normalizedModel }) {
+        if let option = combinedModelOptions.first(where: { $0.id == normalizedModel }) {
             return option.detail.isEmpty ? option.title : "\(option.title) · \(option.detail)"
         }
         return "自定义模型"
+    }
+
+    private var combinedModelOptions: [AIModelOption] {
+        var seen = Set<String>()
+        var result: [AIModelOption] = []
+
+        for option in remoteModelOptions + providerDraft.modelOptions {
+            let key = option.id.lowercased()
+            guard !seen.contains(key) else { continue }
+            seen.insert(key)
+            result.append(option)
+        }
+
+        if !normalizedModel.isEmpty, !seen.contains(normalizedModel.lowercased()) {
+            result.insert(AIModelOption(normalizedModel, title: "当前模型", detail: "自定义"), at: 0)
+        }
+
+        return result
+    }
+
+    private var modelFetchSignature: String {
+        let apiKey = apiKeyDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+        let keySignature = apiKey.isEmpty ? "empty" : String(apiKey.hashValue)
+        let normalizedBaseURL = resolvedBaseURLDraft
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+            .lowercased()
+
+        return [
+            providerDraft.rawValue,
+            normalizedBaseURL,
+            keySignature
+        ].joined(separator: "|")
     }
 
     private func selectModel(_ model: String) {
@@ -341,24 +503,134 @@ struct AppSettingsView: View {
         focusedField = nil
     }
 
+    private func openModelPicker() {
+        focusedField = nil
+
+        guard !isFetchingModels else { return }
+        guard lastModelFetchSignature == modelFetchSignature else {
+            fetchRemoteModels()
+            return
+        }
+
+        showModelPicker = true
+    }
+
     private func changeProvider(to provider: AIProvider) {
         guard provider != providerDraft else { return }
-        let oldProvider = providerDraft
-        let currentBaseURL = baseURLDraft.trimmingCharacters(in: .whitespacesAndNewlines)
-        let currentModel = modelDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+        storeCurrentDraft()
 
         providerDraft = provider
-
-        if currentBaseURL.isEmpty || currentBaseURL == oldProvider.defaultBaseURL {
-            baseURLDraft = provider.defaultBaseURL
-        }
-
-        if currentModel.isEmpty || currentModel == oldProvider.defaultModel {
-            modelDraft = provider.defaultModel
-        }
-
+        applyDraft(for: provider)
         showCustomModelField = Self.isCustomModel(modelDraft, provider: provider)
         showAdvancedConnection = provider != .deepSeek
+        remoteModelOptions = []
+        lastModelFetchSignature = nil
+        modelFetchMessage = nil
+        connectionTestMessage = nil
+    }
+
+    private func storeCurrentDraft() {
+        providerSettingsDrafts[providerDraft] = ProviderSettingsDraft(
+            apiKey: apiKeyDraft,
+            baseURL: baseURLDraft,
+            model: modelDraft
+        )
+    }
+
+    private func applyDraft(for provider: AIProvider) {
+        let draft = providerSettingsDrafts[provider] ?? ProviderSettingsDraft(
+            apiKey: apiKeyStore.apiKey(for: provider),
+            baseURL: apiKeyStore.baseURL(for: provider),
+            model: apiKeyStore.model(for: provider)
+        )
+
+        apiKeyDraft = draft.apiKey
+        baseURLDraft = draft.baseURL
+        modelDraft = draft.model
+    }
+
+    private func fetchRemoteModels() {
+        modelFetchTask?.cancel()
+        focusedField = nil
+        modelFetchMessage = nil
+        let fetchSignature = modelFetchSignature
+
+        if lastModelFetchSignature != fetchSignature {
+            remoteModelOptions = []
+        }
+
+        let configuration = AIConnectionConfiguration(
+            provider: providerDraft,
+            apiKey: apiKeyDraft.trimmingCharacters(in: .whitespacesAndNewlines),
+            baseURL: resolvedBaseURLDraft,
+            model: normalizedModel
+        )
+
+        modelFetchTask = Task {
+            await MainActor.run {
+                isFetchingModels = true
+            }
+
+            do {
+                let models = try await AIModelFetcher(configuration: configuration).fetchModels()
+                guard !Task.isCancelled else { return }
+                await MainActor.run {
+                    remoteModelOptions = models
+                    lastModelFetchSignature = fetchSignature
+                    modelFetchMessage = "已加载 \(models.count) 个服务器模型"
+                    isFetchingModels = false
+                    showModelPicker = true
+                }
+            } catch {
+                guard !Task.isCancelled else { return }
+                await MainActor.run {
+                    let message = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+                    lastModelFetchSignature = fetchSignature
+                    modelFetchMessage = "\(message) 已保留预设模型。"
+                    isFetchingModels = false
+                    showModelPicker = true
+                }
+            }
+        }
+    }
+
+    private func testConnection() {
+        connectionTestTask?.cancel()
+        focusedField = nil
+        connectionTestMessage = nil
+        let fetchSignature = modelFetchSignature
+
+        let configuration = AIConnectionConfiguration(
+            provider: providerDraft,
+            apiKey: apiKeyDraft.trimmingCharacters(in: .whitespacesAndNewlines),
+            baseURL: resolvedBaseURLDraft,
+            model: normalizedModel
+        )
+
+        connectionTestTask = Task {
+            await MainActor.run {
+                isTestingConnection = true
+            }
+
+            do {
+                let models = try await AIModelFetcher(configuration: configuration).fetchModels()
+                guard !Task.isCancelled else { return }
+                await MainActor.run {
+                    remoteModelOptions = models
+                    lastModelFetchSignature = fetchSignature
+                    connectionTestMessage = "连接可用，已加载 \(models.count) 个模型"
+                    modelFetchMessage = nil
+                    isTestingConnection = false
+                }
+            } catch {
+                guard !Task.isCancelled else { return }
+                await MainActor.run {
+                    let message = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+                    connectionTestMessage = message
+                    isTestingConnection = false
+                }
+            }
+        }
     }
 
     private static func isCustomModel(_ model: String, provider: AIProvider) -> Bool {
@@ -368,12 +640,31 @@ struct AppSettingsView: View {
     }
 
     private func saveSettingsAndDismiss() {
-        apiKeyStore.provider = providerDraft
-        apiKeyStore.apiKey = apiKeyDraft
-        apiKeyStore.baseURL = baseURLDraft
-        apiKeyStore.model = modelDraft
-        apiKeyStore.save()
+        var drafts = providerSettingsDrafts
+        drafts[providerDraft] = ProviderSettingsDraft(
+            apiKey: apiKeyDraft,
+            baseURL: baseURLDraft,
+            model: modelDraft
+        )
+        providerSettingsDrafts = drafts
+
+        for provider in AIProvider.allCases {
+            guard let draft = drafts[provider] else { continue }
+            apiKeyStore.saveSettings(
+                for: provider,
+                apiKey: draft.apiKey,
+                baseURL: draft.baseURL,
+                model: draft.model
+            )
+        }
+
+        apiKeyStore.selectProvider(providerDraft)
         dismiss()
+    }
+
+    private var resolvedBaseURLDraft: String {
+        let value = baseURLDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+        return value.isEmpty ? providerDraft.defaultBaseURL : value
     }
 }
 
@@ -381,6 +672,91 @@ private enum SettingsField: Hashable {
     case apiKey
     case baseURL
     case model
+}
+
+private struct ModelPickerSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    let providerTitle: String
+    let options: [AIModelOption]
+    let selectedModel: String
+    let onSelect: (String) -> Void
+    let onCustomModel: () -> Void
+
+    @State private var searchText = ""
+
+    private var filteredOptions: [AIModelOption] {
+        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty else { return options }
+
+        return options.filter { option in
+            option.id.localizedCaseInsensitiveContains(query) ||
+                option.title.localizedCaseInsensitiveContains(query) ||
+                option.detail.localizedCaseInsensitiveContains(query)
+        }
+    }
+
+    var body: some View {
+        NavigationStack {
+            List {
+                Section {
+                    ForEach(filteredOptions) { option in
+                        Button {
+                            onSelect(option.id)
+                        } label: {
+                            HStack(spacing: 12) {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(option.title)
+                                        .font(.system(size: 15, weight: .semibold))
+                                        .foregroundStyle(.primary)
+
+                                    Text(option.id)
+                                        .font(.caption.monospacedDigit())
+                                        .foregroundStyle(.secondary)
+                                        .lineLimit(1)
+
+                                    if !option.detail.isEmpty {
+                                        Text(option.detail)
+                                            .font(.caption2)
+                                            .foregroundStyle(.secondary)
+                                    }
+                                }
+
+                                Spacer(minLength: 8)
+
+                                if option.id == selectedModel {
+                                    Image(systemName: "checkmark.circle.fill")
+                                        .font(.system(size: 18, weight: .semibold))
+                                        .foregroundStyle(.primary)
+                                }
+                            }
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                    }
+
+                    Button {
+                        onCustomModel()
+                    } label: {
+                        Label("自定义模型", systemImage: "pencil")
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundStyle(.primary)
+                    }
+                }
+            }
+            .listStyle(.insetGrouped)
+            .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: "搜索模型")
+            .navigationTitle(providerTitle)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("完成") {
+                        dismiss()
+                    }
+                    .fontWeight(.semibold)
+                }
+            }
+        }
+    }
 }
 
 private struct SettingsBackground: View {
