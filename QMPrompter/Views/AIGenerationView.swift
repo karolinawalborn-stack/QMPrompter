@@ -386,33 +386,42 @@ private struct VoiceInputButton: View {
             ZStack {
                 if isActive {
                     Circle()
-                        .stroke(.white.opacity(0.34), lineWidth: 1.2)
+                        .stroke(.black.opacity(0.06), lineWidth: 1.2)
                         .frame(width: 104, height: 104)
                         .scaleEffect(1.10)
 
                     Circle()
-                        .stroke(.white.opacity(0.22), lineWidth: 1)
+                        .stroke(.white.opacity(0.74), lineWidth: 1)
                         .frame(width: 118, height: 118)
                         .scaleEffect(1.14)
                 }
 
                 Circle()
+                    .fill(voiceButtonFill)
                     .frame(width: 88, height: 88)
-                    .voiceButtonSurface(isActive: isActive)
+                    .overlay(
+                        Circle()
+                            .stroke(voiceButtonBorder, lineWidth: 0.85)
+                    )
+                    .shadow(color: .black.opacity(isActive ? 0.10 : 0.075), radius: 20, y: 9)
+                    .shadow(color: .white.opacity(0.58), radius: 1, y: -0.5)
 
                 if isActive {
-                    Image(systemName: "stop.fill")
-                        .font(.system(size: 28, weight: .bold))
-                        .foregroundStyle(.primary)
-                        .id("voice-stop-icon")
+                    VStack(spacing: 7) {
+                        ListeningBars()
+
+                        RoundedRectangle(cornerRadius: 5, style: .continuous)
+                            .fill(Color.black.opacity(0.84))
+                            .frame(width: 23, height: 23)
+                    }
+                    .id("voice-active-glyph")
                 } else {
                     Image(systemName: "mic.fill")
                         .font(.system(size: 30, weight: .semibold))
-                        .foregroundStyle(.primary)
+                        .foregroundStyle(.black.opacity(0.76))
                         .id("voice-mic-icon")
                 }
             }
-            .foregroundStyle(.primary)
             .frame(width: 124, height: 108)
             .contentShape(Circle())
             .id(isActive ? "voice-button-active" : "voice-button-idle")
@@ -421,8 +430,54 @@ private struct VoiceInputButton: View {
         .disabled(isDisabled)
         .opacity(isDisabled ? 0.62 : 1)
         .scaleEffect(isActive ? 1.03 : 1)
-        .animation(.easeInOut(duration: 0.18), value: isActive)
+        .animation(.spring(response: 0.24, dampingFraction: 0.86), value: isActive)
         .accessibilityLabel(isActive ? "停止语音输入" : "开始语音输入")
+    }
+
+    private var voiceButtonFill: LinearGradient {
+        LinearGradient(
+            colors: isActive ? [
+                .white.opacity(0.96),
+                .white.opacity(0.74)
+            ] : [
+                .white.opacity(0.86),
+                .white.opacity(0.56)
+            ],
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
+        )
+    }
+
+    private var voiceButtonBorder: LinearGradient {
+        LinearGradient(
+            colors: [
+                .white.opacity(0.88),
+                .white.opacity(0.34),
+                .black.opacity(0.08)
+            ],
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
+        )
+    }
+}
+
+private struct ListeningBars: View {
+    var body: some View {
+        HStack(spacing: 3) {
+            Capsule()
+                .fill(Color.black.opacity(0.46))
+                .frame(width: 3, height: 10)
+            Capsule()
+                .fill(Color.black.opacity(0.68))
+                .frame(width: 3, height: 16)
+            Capsule()
+                .fill(Color.black.opacity(0.54))
+                .frame(width: 3, height: 12)
+            Capsule()
+                .fill(Color.black.opacity(0.38))
+                .frame(width: 3, height: 8)
+        }
+        .frame(height: 18)
     }
 }
 
@@ -489,36 +544,4 @@ private extension View {
         )
     }
 
-    @ViewBuilder
-    func voiceButtonSurface(isActive: Bool) -> some View {
-        let shape = Circle()
-
-        if #available(iOS 26.0, *) {
-            glassEffect(.regular.tint(.white.opacity(isActive ? 0.09 : 0.04)).interactive(), in: shape)
-                .background(.white.opacity(isActive ? 0.36 : 0.26), in: shape)
-                .overlay(voiceButtonBorder(shape))
-                .shadow(color: .black.opacity(0.10), radius: 22, y: 10)
-                .shadow(color: .white.opacity(0.42), radius: 1, y: -0.5)
-        } else {
-            background(.ultraThinMaterial, in: shape)
-                .background(.white.opacity(isActive ? 0.36 : 0.26), in: shape)
-                .overlay(voiceButtonBorder(shape))
-                .shadow(color: .black.opacity(0.09), radius: 20, y: 9)
-        }
-    }
-
-    private func voiceButtonBorder(_ shape: Circle) -> some View {
-        shape.stroke(
-            LinearGradient(
-                colors: [
-                    .white.opacity(0.72),
-                    .white.opacity(0.26),
-                    .black.opacity(0.04)
-                ],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            ),
-            lineWidth: 0.8
-        )
-    }
 }
