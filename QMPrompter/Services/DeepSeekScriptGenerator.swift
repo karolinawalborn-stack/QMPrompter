@@ -95,9 +95,11 @@ struct DeepSeekScriptGenerator {
     不要 Markdown；
     不要代码块；
     不要标题；
+    不要提纲；
     不要列表符号；
     不要加粗标记；
     不要小标题；
+    不要“开场、观点、结尾”这类段落标签；
     不要“第一点、第二点、首先、其次、最后”；
     不要镜头提示、音乐提示、字幕提示或时长说明；
     不要解释你的写作过程；
@@ -117,10 +119,13 @@ struct DeepSeekScriptGenerator {
         let lines = result
             .components(separatedBy: .newlines)
             .compactMap { rawLine -> String? in
-                let line = rawLine.trimmingCharacters(in: .whitespacesAndNewlines)
+                var line = rawLine.trimmingCharacters(in: .whitespacesAndNewlines)
                 guard !line.isEmpty else { return "" }
                 guard !shouldDropGeneratedLine(line) else { return nil }
-                let strippedLine = stripGeneratedLinePrefix(line)
+                line = stripGeneratedLinePrefix(line)
+                line = stripLeadingStageDirection(line)
+                guard !shouldDropGeneratedLine(line) else { return nil }
+                let strippedLine = line.trimmingCharacters(in: .whitespacesAndNewlines)
                 return strippedLine.isEmpty ? nil : strippedLine
             }
 
@@ -142,19 +147,60 @@ struct DeepSeekScriptGenerator {
             .replacingOccurrences(of: "：", with: ":")
             .trimmingCharacters(in: .whitespacesAndNewlines)
 
-        return ["口播正文", "口播正文:", "口播稿", "口播稿:", "正文", "正文:"].contains(normalized)
+        if [
+            "口播正文", "口播正文:", "口播稿", "口播稿:", "正文", "正文:",
+            "标题", "标题:", "小标题", "小标题:", "提纲", "提纲:",
+            "开场", "开场:", "开场白", "开场白:", "结尾", "结尾:",
+            "收束", "收束:", "脚本", "脚本:", "文稿", "文稿:"
+        ].contains(normalized) {
+            return true
+        }
+
+        let stageDirectionPattern = #"^[【\(\（\[]?\s*(镜头|画面|字幕|音乐|音效|BGM|提示|时长|旁白)[^。！？]*[】\)\）\]：:]"#
+        if line.range(of: stageDirectionPattern, options: [.regularExpression, .caseInsensitive]) != nil {
+            return true
+        }
+
+        let metaResponsePattern = #"^(以下是|下面是|好的[，,]|可以[，,]).*(口播|文稿|脚本|提词器)"#
+        return line.range(of: metaResponsePattern, options: .regularExpression) != nil
     }
 
     private static func stripGeneratedLinePrefix(_ line: String) -> String {
         var result = line
         let prefixPatterns = [
-            #"^[-*•]\s+"#,
-            #"^\d+[\.\)、]\s*"#,
-            #"^第[一二三四五六七八九十]+[点部分][：:、，\s]*"#
+            #"^#{1,6}\s*"#,
+            #"^[-*•·]\s+"#,
+            #"^\d+[\.\)、、]\s*"#,
+            #"^（?[一二三四五六七八九十]+[、\.．）)]\s*"#,
+            #"^第[一二三四五六七八九十0-9]+[点部分][：:、，\s]*"#,
+            #"^(口播正文|口播稿|正文|开场白|开场|观点|转折|收束|结尾|脚本|文稿|提词器文稿)[：:\s]+"#,
+            #"^(首先|其次|然后|接着|再说|最后|总之)[，,、：:\s]+"#
         ]
 
-        for pattern in prefixPatterns {
-            if let range = result.range(of: pattern, options: .regularExpression) {
+        var didStrip = true
+        while didStrip {
+            didStrip = false
+            for pattern in prefixPatterns {
+                if let range = result.range(of: pattern, options: .regularExpression) {
+                    result.removeSubrange(range)
+                    result = result.trimmingCharacters(in: .whitespacesAndNewlines)
+                    didStrip = true
+                }
+            }
+        }
+
+        return result.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private static func stripLeadingStageDirection(_ line: String) -> String {
+        var result = line
+        let stagePatterns = [
+            #"^[【\(\（\[]\s*(停顿|微笑|看镜头|转场|镜头|画面|字幕|音乐|音效|BGM|提示)[^】\)\）\]]*[】\)\）\]]\s*"#,
+            #"^（\s*[0-9]+秒\s*）\s*"#
+        ]
+
+        for pattern in stagePatterns {
+            if let range = result.range(of: pattern, options: [.regularExpression, .caseInsensitive]) {
                 result.removeSubrange(range)
             }
         }
