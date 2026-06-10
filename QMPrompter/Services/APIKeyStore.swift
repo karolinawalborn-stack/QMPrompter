@@ -1,7 +1,7 @@
 import Foundation
 import Security
 
-enum AIProvider: String, CaseIterable, Codable, Identifiable {
+enum AIProvider: String, CaseIterable, Codable, Hashable, Identifiable {
     case deepSeek
     case openAICompatible
     case anthropicCompatible
@@ -142,8 +142,6 @@ final class APIKeyStore: ObservableObject {
     @Published var baseURL: String
     @Published var model: String
 
-    private let account = "ai-api-key"
-    private let legacyDeepSeekAccount = "deepseek-api-key"
     private let service = "com.qiaomu.Prompter"
     private let defaults = UserDefaults.standard
 
@@ -151,6 +149,14 @@ final class APIKeyStore: ObservableObject {
         static let provider = "ai.provider"
         static let baseURL = "ai.baseURL"
         static let model = "ai.model"
+
+        static func baseURL(for provider: AIProvider) -> String {
+            "ai.\(provider.rawValue).baseURL"
+        }
+
+        static func model(for provider: AIProvider) -> String {
+            "ai.\(provider.rawValue).model"
+        }
     }
 
     var hasAPIKey: Bool {
@@ -169,50 +175,136 @@ final class APIKeyStore: ObservableObject {
     init() {
         let savedProvider = defaults.string(forKey: DefaultsKey.provider)
             .flatMap(AIProvider.init(rawValue:)) ?? .deepSeek
+        Self.migrateLegacyCredentials(currentProvider: savedProvider, service: service)
         provider = savedProvider
-        apiKey = Self.read(account: account, service: service) ??
-            Self.read(account: legacyDeepSeekAccount, service: service) ?? ""
+        apiKey = Self.apiKey(for: savedProvider, service: service)
         baseURL = Self.initialBaseURL(
-            defaults.string(forKey: DefaultsKey.baseURL),
+            Self.savedBaseURL(for: savedProvider, currentProvider: savedProvider, defaults: defaults),
             provider: savedProvider
         )
         model = Self.initialModel(
-            defaults.string(forKey: DefaultsKey.model),
+            Self.savedModel(for: savedProvider, currentProvider: savedProvider, defaults: defaults),
             provider: savedProvider
         )
-        defaults.set(baseURL, forKey: DefaultsKey.baseURL)
-        defaults.set(model, forKey: DefaultsKey.model)
+        persistCurrentProviderValues()
     }
 
     func save() {
+        saveSettings(for: provider, apiKey: apiKey, baseURL: baseURL, model: model)
+        selectProvider(provider)
+    }
+
+    func apiKey(for provider: AIProvider) -> String {
+        Self.apiKey(for: provider, service: service)
+    }
+
+    func baseURL(for provider: AIProvider) -> String {
+        Self.initialBaseURL(
+            Self.savedBaseURL(for: provider, currentProvider: self.provider, defaults: defaults),
+            provider: provider
+        )
+    }
+
+    func model(for provider: AIProvider) -> String {
+        Self.initialModel(
+            Self.savedModel(for: provider, currentProvider: self.provider, defaults: defaults),
+            provider: provider
+        )
+    }
+
+    func saveSettings(for provider: AIProvider, apiKey: String, baseURL: String, model: String) {
         let key = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
-        let nextBaseURL = resolvedBaseURL
-        let nextModel = resolvedModel
+        let nextBaseURL = Self.resolvedBaseURL(baseURL, provider: provider)
+        let nextModel = Self.resolvedModel(model, provider: provider)
 
-        apiKey = key
-        baseURL = nextBaseURL
-        model = nextModel
-
-        defaults.set(provider.rawValue, forKey: DefaultsKey.provider)
-        defaults.set(nextBaseURL, forKey: DefaultsKey.baseURL)
-        defaults.set(nextModel, forKey: DefaultsKey.model)
+        defaults.set(nextBaseURL, forKey: DefaultsKey.baseURL(for: provider))
+        defaults.set(nextModel, forKey: DefaultsKey.model(for: provider))
 
         if key.isEmpty {
-            Self.delete(account: account, service: service)
+            Self.delete(account: Self.account(for: provider), service: service)
         } else {
-            Self.save(key, account: account, service: service)
+            Self.save(key, account: Self.account(for: provider), service: service)
         }
-        Self.delete(account: legacyDeepSeekAccount, service: service)
+    }
+
+    func selectProvider(_ provider: AIProvider) {
+        self.provider = provider
+        self.apiKey = apiKey(for: provider)
+        self.baseURL = baseURL(for: provider)
+        self.model = model(for: provider)
+        defaults.set(provider.rawValue, forKey: DefaultsKey.provider)
+        persistCurrentProviderValues()
     }
 
     private var resolvedBaseURL: String {
+        Self.resolvedBaseURL(baseURL, provider: provider)
+    }
+
+    private var resolvedModel: String {
+        Self.resolvedModel(model, provider: provider)
+    }
+
+    private func persistCurrentProviderValues() {
+        defaults.set(provider.rawValue, forKey: DefaultsKey.provider)
+        defaults.set(baseURL, forKey: DefaultsKey.baseURL(for: provider))
+        defaults.set(model, forKey: DefaultsKey.model(for: provider))
+        defaults.removeObject(forKey: DefaultsKey.baseURL)
+        defaults.removeObject(forKey: DefaultsKey.model)
+
+        if !apiKey.isEmpty, Self.read(account: Self.account(for: provider), service: service) == nil {
+            Self.save(apiKey, account: Self.account(for: provider), service: service)
+        }
+    }
+
+    private static func resolvedBaseURL(_ baseURL: String, provider: AIProvider) -> String {
         let value = baseURL.trimmingCharacters(in: .whitespacesAndNewlines)
         return value.isEmpty ? provider.defaultBaseURL : value
     }
 
-    private var resolvedModel: String {
+    private static func resolvedModel(_ model: String, provider: AIProvider) -> String {
         let value = model.trimmingCharacters(in: .whitespacesAndNewlines)
         return value.isEmpty ? provider.defaultModel : value
+    }
+
+    private static func account(for provider: AIProvider) -> String {
+        "ai-api-key.\(provider.rawValue)"
+    }
+
+    private static func apiKey(for provider: AIProvider, service: String) -> String {
+        read(account: account(for: provider), service: service) ?? ""
+    }
+
+    private static let legacySharedAccount = "ai-api-key"
+    private static let legacyDeepSeekAccount = "deepseek-api-key"
+
+    private static func migrateLegacyCredentials(currentProvider: AIProvider, service: String) {
+        if read(account: account(for: .deepSeek), service: service) == nil,
+           let legacyDeepSeekKey = read(account: legacyDeepSeekAccount, service: service) {
+            save(legacyDeepSeekKey, account: account(for: .deepSeek), service: service)
+        }
+
+        if read(account: account(for: currentProvider), service: service) == nil,
+           let legacySharedKey = read(account: legacySharedAccount, service: service) {
+            save(legacySharedKey, account: account(for: currentProvider), service: service)
+        }
+    }
+
+    private static func savedBaseURL(
+        for provider: AIProvider,
+        currentProvider: AIProvider,
+        defaults: UserDefaults
+    ) -> String? {
+        defaults.string(forKey: DefaultsKey.baseURL(for: provider)) ??
+            (provider == currentProvider ? defaults.string(forKey: DefaultsKey.baseURL) : nil)
+    }
+
+    private static func savedModel(
+        for provider: AIProvider,
+        currentProvider: AIProvider,
+        defaults: UserDefaults
+    ) -> String? {
+        defaults.string(forKey: DefaultsKey.model(for: provider)) ??
+            (provider == currentProvider ? defaults.string(forKey: DefaultsKey.model) : nil)
     }
 
     private static func initialBaseURL(_ savedBaseURL: String?, provider: AIProvider) -> String {

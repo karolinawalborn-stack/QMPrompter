@@ -49,7 +49,7 @@ struct AIScriptGenerator {
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("Bearer \(configuration.apiKey)", forHTTPHeaderField: "Authorization")
-        request.timeoutInterval = 90
+        request.timeoutInterval = 180
 
         let body = ChatCompletionsRequest(
             model: configuration.model,
@@ -82,7 +82,7 @@ struct AIScriptGenerator {
         request.setValue(configuration.apiKey, forHTTPHeaderField: "x-api-key")
         request.setValue("Bearer \(configuration.apiKey)", forHTTPHeaderField: "Authorization")
         request.setValue("2023-06-01", forHTTPHeaderField: "anthropic-version")
-        request.timeoutInterval = 90
+        request.timeoutInterval = 180
 
         let body = AnthropicMessagesRequest(
             model: configuration.model,

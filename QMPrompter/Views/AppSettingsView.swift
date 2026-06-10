@@ -1,6 +1,12 @@
 import SwiftUI
 import UIKit
 
+private struct ProviderSettingsDraft {
+    var apiKey: String
+    var baseURL: String
+    var model: String
+}
+
 struct AppSettingsView: View {
     @Environment(\.dismiss) private var dismiss
     @ObservedObject var apiKeyStore: APIKeyStore
@@ -8,6 +14,7 @@ struct AppSettingsView: View {
     @State private var apiKeyDraft: String
     @State private var baseURLDraft: String
     @State private var modelDraft: String
+    @State private var providerSettingsDrafts: [AIProvider: ProviderSettingsDraft]
     @State private var showAdvancedConnection = false
     @State private var showCustomModelField: Bool
     @State private var remoteModelOptions: [AIModelOption] = []
@@ -21,12 +28,25 @@ struct AppSettingsView: View {
     init(apiKeyStore: APIKeyStore) {
         let initialProvider = apiKeyStore.provider
         let initialModel = apiKeyStore.model.trimmingCharacters(in: .whitespacesAndNewlines)
+        let drafts = Dictionary(
+            uniqueKeysWithValues: AIProvider.allCases.map { provider in
+                (
+                    provider,
+                    ProviderSettingsDraft(
+                        apiKey: apiKeyStore.apiKey(for: provider),
+                        baseURL: apiKeyStore.baseURL(for: provider),
+                        model: apiKeyStore.model(for: provider)
+                    )
+                )
+            }
+        )
 
         self.apiKeyStore = apiKeyStore
         _providerDraft = State(initialValue: initialProvider)
         _apiKeyDraft = State(initialValue: apiKeyStore.apiKey)
         _baseURLDraft = State(initialValue: apiKeyStore.baseURL)
         _modelDraft = State(initialValue: apiKeyStore.model)
+        _providerSettingsDrafts = State(initialValue: drafts)
         _showCustomModelField = State(initialValue: AppSettingsView.isCustomModel(initialModel, provider: initialProvider))
     }
 
@@ -435,25 +455,35 @@ struct AppSettingsView: View {
 
     private func changeProvider(to provider: AIProvider) {
         guard provider != providerDraft else { return }
-        let oldProvider = providerDraft
-        let currentBaseURL = baseURLDraft.trimmingCharacters(in: .whitespacesAndNewlines)
-        let currentModel = modelDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+        storeCurrentDraft()
 
         providerDraft = provider
-
-        if currentBaseURL.isEmpty || oldProvider.matchesDefaultBaseURL(currentBaseURL) {
-            baseURLDraft = provider.defaultBaseURL
-        }
-
-        if currentModel.isEmpty || oldProvider.matchesDefaultModel(currentModel) {
-            modelDraft = provider.defaultModel
-        }
-
+        applyDraft(for: provider)
         showCustomModelField = Self.isCustomModel(modelDraft, provider: provider)
         showAdvancedConnection = provider != .deepSeek
         remoteModelOptions = []
         lastModelFetchSignature = nil
         modelFetchMessage = nil
+    }
+
+    private func storeCurrentDraft() {
+        providerSettingsDrafts[providerDraft] = ProviderSettingsDraft(
+            apiKey: apiKeyDraft,
+            baseURL: baseURLDraft,
+            model: modelDraft
+        )
+    }
+
+    private func applyDraft(for provider: AIProvider) {
+        let draft = providerSettingsDrafts[provider] ?? ProviderSettingsDraft(
+            apiKey: apiKeyStore.apiKey(for: provider),
+            baseURL: apiKeyStore.baseURL(for: provider),
+            model: apiKeyStore.model(for: provider)
+        )
+
+        apiKeyDraft = draft.apiKey
+        baseURLDraft = draft.baseURL
+        modelDraft = draft.model
     }
 
     private func fetchRemoteModels() {
@@ -508,11 +538,25 @@ struct AppSettingsView: View {
     }
 
     private func saveSettingsAndDismiss() {
-        apiKeyStore.provider = providerDraft
-        apiKeyStore.apiKey = apiKeyDraft
-        apiKeyStore.baseURL = baseURLDraft
-        apiKeyStore.model = modelDraft
-        apiKeyStore.save()
+        var drafts = providerSettingsDrafts
+        drafts[providerDraft] = ProviderSettingsDraft(
+            apiKey: apiKeyDraft,
+            baseURL: baseURLDraft,
+            model: modelDraft
+        )
+        providerSettingsDrafts = drafts
+
+        for provider in AIProvider.allCases {
+            guard let draft = drafts[provider] else { continue }
+            apiKeyStore.saveSettings(
+                for: provider,
+                apiKey: draft.apiKey,
+                baseURL: draft.baseURL,
+                model: draft.model
+            )
+        }
+
+        apiKeyStore.selectProvider(providerDraft)
         dismiss()
     }
 
