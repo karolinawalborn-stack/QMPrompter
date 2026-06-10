@@ -414,11 +414,11 @@ struct AppSettingsView: View {
 
         providerDraft = provider
 
-        if currentBaseURL.isEmpty || currentBaseURL == oldProvider.defaultBaseURL {
+        if currentBaseURL.isEmpty || oldProvider.matchesDefaultBaseURL(currentBaseURL) {
             baseURLDraft = provider.defaultBaseURL
         }
 
-        if currentModel.isEmpty || currentModel == oldProvider.defaultModel {
+        if currentModel.isEmpty || oldProvider.matchesDefaultModel(currentModel) {
             modelDraft = provider.defaultModel
         }
 

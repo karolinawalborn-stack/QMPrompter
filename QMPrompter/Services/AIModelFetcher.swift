@@ -81,8 +81,11 @@ struct AIModelFetcher {
 
         guard !path.hasSuffix("models") else { return url }
 
-        if configuration.provider == .anthropicCompatible,
-           !path.hasSuffix("v1") {
+        if configuration.provider == .openAICompatible,
+           path.isEmpty {
+            url.appendPathComponent("v1")
+        } else if configuration.provider == .anthropicCompatible,
+                  !path.hasSuffix("v1") {
             url.appendPathComponent("v1")
         }
 

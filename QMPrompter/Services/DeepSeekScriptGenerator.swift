@@ -145,6 +145,10 @@ struct AIScriptGenerator {
         switch endpoint {
         case .chatCompletions:
             guard !path.hasSuffix("chat/completions") else { return url }
+            if configuration.provider == .openAICompatible,
+               path.isEmpty {
+                url.appendPathComponent("v1")
+            }
             url.appendPathComponent("chat")
             url.appendPathComponent("completions")
             return url

@@ -181,7 +181,7 @@ Open the app, go to Settings, and configure:
 
 - AI service: DeepSeek, OpenAI-compatible, or Claude-compatible.
 - API Key: stored locally in Keychain.
-- Base URL: useful for official APIs or third-party gateways.
+- Base URL: OpenAI-compatible and Claude-compatible providers default to `https://api.aigocode.com`; the app sends compatible requests to the verified `/v1/...` endpoints and you can replace the URL with any official API or third-party gateway.
 - Model: choose from quick presets or enter a custom model name.
 - Remote models: tap refresh next to the model field to load models from the configured provider, then search and select one.
 
@@ -189,7 +189,7 @@ Open the app, go to Settings, and configure:
 
 - AI 服务：DeepSeek、OpenAI 兼容、Claude 兼容。
 - API Key：本地存入 Keychain。
-- Base URL：可填写官方接口或第三方中转地址。
+- Base URL：OpenAI 兼容和 Claude 兼容默认使用 `https://api.aigocode.com`；App 会按已验证的 `/v1/...` 接口发起兼容请求，也可以替换为官方接口或其他第三方中转地址。
 - 模型：可从预设模型下拉选择，也可以填写自定义模型名。
 - 远程模型：点击模型字段旁边的刷新按钮，可从当前服务端拉取模型列表，再搜索选择。
 
