@@ -106,7 +106,7 @@ struct AIGenerationView: View {
                 clearTransientErrors()
             }
             .onChange(of: dictation.errorMessage) { _, message in
-                if message != nil {
+                if shouldResetVoiceButton(for: message) {
                     isVoiceInputActive = false
                 }
             }
@@ -312,6 +312,13 @@ struct AIGenerationView: View {
         dictation.clearError()
     }
 
+    private func shouldResetVoiceButton(for message: String?) -> Bool {
+        guard let message else { return false }
+        return message.contains("权限") ||
+            message.contains("不可用") ||
+            message.contains("启动失败")
+    }
+
     private func mergedDictationPrompt(with transcript: String) -> String {
         let base = promptBeforeDictation.trimmingCharacters(in: .whitespacesAndNewlines)
         let spoken = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -377,32 +384,44 @@ private struct VoiceInputButton: View {
     var body: some View {
         Button(action: action) {
             ZStack {
-                Circle()
-                    .stroke(.white.opacity(isActive ? 0.34 : 0), lineWidth: 1.2)
-                    .frame(width: 104, height: 104)
-                    .scaleEffect(isActive ? 1.10 : 0.94)
-                    .opacity(isActive ? 1 : 0)
+                if isActive {
+                    Circle()
+                        .stroke(.white.opacity(0.34), lineWidth: 1.2)
+                        .frame(width: 104, height: 104)
+                        .scaleEffect(1.10)
+
+                    Circle()
+                        .stroke(.white.opacity(0.22), lineWidth: 1)
+                        .frame(width: 118, height: 118)
+                        .scaleEffect(1.14)
+                }
 
                 Circle()
-                    .stroke(.white.opacity(isActive ? 0.22 : 0), lineWidth: 1)
-                    .frame(width: 118, height: 118)
-                    .scaleEffect(isActive ? 1.14 : 0.90)
-                    .opacity(isActive ? 1 : 0)
-
-                Image(systemName: isActive ? "stop.fill" : "mic.fill")
-                    .font(.system(size: 30, weight: .semibold))
-                    .foregroundStyle(.primary)
                     .frame(width: 88, height: 88)
                     .voiceButtonSurface(isActive: isActive)
+
+                if isActive {
+                    Image(systemName: "stop.fill")
+                        .font(.system(size: 28, weight: .bold))
+                        .foregroundStyle(.primary)
+                        .id("voice-stop-icon")
+                } else {
+                    Image(systemName: "mic.fill")
+                        .font(.system(size: 30, weight: .semibold))
+                        .foregroundStyle(.primary)
+                        .id("voice-mic-icon")
+                }
             }
+            .foregroundStyle(.primary)
             .frame(width: 124, height: 108)
             .contentShape(Circle())
+            .id(isActive ? "voice-button-active" : "voice-button-idle")
         }
         .buttonStyle(.plain)
         .disabled(isDisabled)
         .opacity(isDisabled ? 0.62 : 1)
         .scaleEffect(isActive ? 1.03 : 1)
-        .animation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true), value: isActive)
+        .animation(.easeInOut(duration: 0.18), value: isActive)
         .accessibilityLabel(isActive ? "停止语音输入" : "开始语音输入")
     }
 }
