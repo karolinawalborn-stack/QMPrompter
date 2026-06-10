@@ -19,6 +19,10 @@ final class PromptDictation: ObservableObject {
         isRecording ? stop() : start()
     }
 
+    func clearError() {
+        errorMessage = nil
+    }
+
     func start() {
         Task {
             await startRecording()

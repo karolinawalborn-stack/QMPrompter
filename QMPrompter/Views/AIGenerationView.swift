@@ -93,6 +93,12 @@ struct AIGenerationView: View {
                 guard !transcript.isEmpty else { return }
                 prompt = mergedDictationPrompt(with: transcript)
             }
+            .onChange(of: prompt) { _, _ in
+                clearTransientErrors()
+            }
+            .onChange(of: apiKeyStore.deepSeekAPIKey) { _, _ in
+                clearTransientErrors()
+            }
             .onDisappear {
                 cancelGeneration()
                 dictation.stop()
@@ -234,9 +240,15 @@ struct AIGenerationView: View {
             return
         }
 
+        clearTransientErrors()
         promptBeforeDictation = prompt
         promptFocused = false
         dictation.start()
+    }
+
+    private func clearTransientErrors() {
+        errorMessage = nil
+        dictation.clearError()
     }
 
     private func mergedDictationPrompt(with transcript: String) -> String {
