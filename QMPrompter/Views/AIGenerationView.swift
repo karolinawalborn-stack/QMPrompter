@@ -9,6 +9,7 @@ struct AIGenerationView: View {
     @State private var prompt = ""
     @State private var promptBeforeDictation = ""
     @State private var isGenerating = false
+    @State private var isVoiceInputActive = false
     @State private var errorMessage: String?
     @State private var showSettings = false
     @State private var generationTask: Task<Void, Never>?
@@ -84,7 +85,7 @@ struct AIGenerationView: View {
                     AIVoiceDockBackground()
 
                     VoiceInputButton(
-                        isActive: dictation.isActive,
+                        isActive: isVoiceInputActive,
                         isDisabled: isGenerating
                     ) {
                         Haptics.lightImpact()
@@ -104,8 +105,14 @@ struct AIGenerationView: View {
             .onChange(of: apiKeyStore.deepSeekAPIKey) { _, _ in
                 clearTransientErrors()
             }
+            .onChange(of: dictation.errorMessage) { _, message in
+                if message != nil {
+                    isVoiceInputActive = false
+                }
+            }
             .onDisappear {
                 cancelGeneration()
+                isVoiceInputActive = false
                 dictation.stop()
             }
             .sheet(isPresented: $showSettings) {
@@ -281,12 +288,14 @@ struct AIGenerationView: View {
     }
 
     private func close() {
+        isVoiceInputActive = false
         dictation.stop()
         dismiss()
     }
 
     private func toggleDictation() {
-        if dictation.isActive {
+        if isVoiceInputActive {
+            isVoiceInputActive = false
             dictation.stop()
             return
         }
@@ -294,6 +303,7 @@ struct AIGenerationView: View {
         clearTransientErrors()
         promptBeforeDictation = prompt
         promptFocused = false
+        isVoiceInputActive = true
         dictation.start()
     }
 
@@ -316,6 +326,7 @@ struct AIGenerationView: View {
         guard apiKeyStore.hasDeepSeekAPIKey, !cleanedPrompt.isEmpty, !isGenerating else { return }
 
         dictation.stop()
+        isVoiceInputActive = false
         errorMessage = nil
         isGenerating = true
         defer {

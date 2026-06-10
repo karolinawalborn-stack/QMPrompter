@@ -3,12 +3,13 @@ import Speech
 
 @MainActor
 final class PromptDictation: ObservableObject {
+    @Published private(set) var isActive = false
     @Published private(set) var isStarting = false
     @Published private(set) var isRecording = false
     @Published private(set) var transcript = ""
     @Published private(set) var errorMessage: String?
 
-    private let speechRecognizer = SFSpeechRecognizer(locale: Locale(identifier: "zh_CN"))
+    private let speechRecognizer = SFSpeechRecognizer(locale: Locale(identifier: "zh_CN")) ?? SFSpeechRecognizer()
     private let audioEngine = AVAudioEngine()
     private var recognitionRequest: SFSpeechAudioBufferRecognitionRequest?
     private var recognitionTask: SFSpeechRecognitionTask?
@@ -16,10 +17,6 @@ final class PromptDictation: ObservableObject {
     private var inputTapInstalled = false
     private var recognitionSessionID = UUID()
     private var intentionallyStoppedSessionIDs: Set<UUID> = []
-
-    var isActive: Bool {
-        isStarting || isRecording
-    }
 
     func toggle() {
         isActive ? stop() : start()
@@ -34,6 +31,7 @@ final class PromptDictation: ObservableObject {
         stopRecognitionSession(markIntentionallyStopped: true)
         errorMessage = nil
         transcript = ""
+        isActive = true
         isStarting = true
         startTask = Task { [weak self] in
             await self?.startRecording()
@@ -54,6 +52,7 @@ final class PromptDictation: ObservableObject {
         }
 
         recognitionSessionID = UUID()
+        isActive = false
         isStarting = false
         isRecording = false
 
@@ -93,10 +92,12 @@ final class PromptDictation: ObservableObject {
 
         let isSpeechAuthorized = await requestSpeechAuthorization()
         guard !Task.isCancelled else {
+            isActive = false
             isStarting = false
             return
         }
         guard isSpeechAuthorized else {
+            isActive = false
             isStarting = false
             errorMessage = "语音识别权限未开启。"
             return
@@ -104,20 +105,24 @@ final class PromptDictation: ObservableObject {
 
         let isMicrophoneAuthorized = await requestMicrophonePermission()
         guard !Task.isCancelled else {
+            isActive = false
             isStarting = false
             return
         }
         guard isMicrophoneAuthorized else {
+            isActive = false
             isStarting = false
             errorMessage = "麦克风权限未开启。"
             return
         }
 
         guard !Task.isCancelled else {
+            isActive = false
             isStarting = false
             return
         }
         guard let speechRecognizer, speechRecognizer.isAvailable else {
+            isActive = false
             isStarting = false
             errorMessage = "当前语音识别不可用。"
             return
@@ -126,14 +131,38 @@ final class PromptDictation: ObservableObject {
         let request = SFSpeechAudioBufferRecognitionRequest()
         request.shouldReportPartialResults = true
         request.taskHint = .dictation
+        request.requiresOnDeviceRecognition = speechRecognizer.supportsOnDeviceRecognition
         if #available(iOS 16.0, *) {
             request.addsPunctuation = true
         }
         recognitionRequest = request
+        let sessionID = UUID()
+        recognitionSessionID = sessionID
+        recognitionTask = speechRecognizer.recognitionTask(with: request) { [weak self] result, error in
+            Task { @MainActor in
+                guard let self else { return }
+
+                if self.intentionallyStoppedSessionIDs.remove(sessionID) != nil {
+                    return
+                }
+
+                guard self.recognitionSessionID == sessionID else { return }
+
+                if let result {
+                    self.transcript = result.bestTranscription.formattedString
+                }
+
+                if error != nil {
+                    guard self.isActive else { return }
+                    self.errorMessage = "语音输入中断。"
+                    self.stop()
+                }
+            }
+        }
 
         do {
             let session = AVAudioSession.sharedInstance()
-            try session.setCategory(.playAndRecord, mode: .measurement, options: [.duckOthers, .defaultToSpeaker, .allowBluetoothHFP])
+            try session.setCategory(.record, mode: .measurement, options: [.duckOthers, .allowBluetoothHFP])
             try session.setActive(true, options: .notifyOthersOnDeactivation)
 
             let inputNode = audioEngine.inputNode
@@ -168,29 +197,6 @@ final class PromptDictation: ObservableObject {
 
         isStarting = false
         isRecording = true
-        let sessionID = UUID()
-        recognitionSessionID = sessionID
-        recognitionTask = speechRecognizer.recognitionTask(with: request) { [weak self] result, error in
-            Task { @MainActor in
-                guard let self else { return }
-
-                if self.intentionallyStoppedSessionIDs.remove(sessionID) != nil {
-                    return
-                }
-
-                guard self.recognitionSessionID == sessionID else { return }
-
-                if let result {
-                    self.transcript = result.bestTranscription.formattedString
-                }
-
-                if error != nil {
-                    guard self.isRecording else { return }
-                    self.errorMessage = "语音输入中断。"
-                    self.stop()
-                }
-            }
-        }
     }
 
     private func requestSpeechAuthorization() async -> Bool {
