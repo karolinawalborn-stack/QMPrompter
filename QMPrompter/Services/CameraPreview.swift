@@ -207,7 +207,7 @@ struct BeautyCameraPreview: UIViewRepresentable {
         let mtkView = MTKView()
         mtkView.device = MTLCreateSystemDefaultDevice()
         mtkView.framebufferOnly = false
-        mtkView.enableSetNeedsDisplay = false
+        mtkView.enableSetNeedsDisplay = true
         mtkView.isPaused = true
         mtkView.backgroundColor = .black
         mtkView.contentScaleFactor = UIScreen.main.scale
