@@ -167,7 +167,7 @@ struct ScriptEditorView: View {
         .onAppear {
             normalizeDisplaySettings()
         }
-        .onChange(of: script) { _, _ in
+        .onChange(of: script) { _ in
             scheduleAutosave()
         }
         .onDisappear {
