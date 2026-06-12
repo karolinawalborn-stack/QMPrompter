@@ -1572,7 +1572,7 @@ extension BeautyCamCoord: AVCaptureVideoDataOutputSampleBufferDelegate {
 struct BeautyCameraPreview: UIViewRepresentable {
     @Binding var permissionState: CameraPermissionState
     @Binding var config: BeautyConfig
-    func makeCoordinator() -> BeautyCamCoord { BeautyCamCoord(state: , config: ) }
+    func makeCoordinator() -> BeautyCamCoord { BeautyCamCoord(state: $permissionState, config: $config) }
     func makeUIView(context: Context) -> BeautyPreviewView {
         let v = BeautyPreviewView(); v.backgroundColor = .black
         context.coordinator.attach(v); context.coordinator.start()
