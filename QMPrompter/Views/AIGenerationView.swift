@@ -95,17 +95,17 @@ struct AIGenerationView: View {
                 .frame(height: 116)
                 .frame(maxWidth: .infinity)
             }
-            .onChange(of: dictation.transcript) { _, transcript in
+            .onChange(of: dictation.transcript) { transcript in
                 guard !transcript.isEmpty else { return }
                 prompt = mergedDictationPrompt(with: transcript)
             }
-            .onChange(of: prompt) { _, _ in
+            .onChange(of: prompt) { _ in
                 clearTransientErrors()
             }
-            .onChange(of: apiKeyStore.apiKey) { _, _ in
+            .onChange(of: apiKeyStore.apiKey) { _ in
                 clearTransientErrors()
             }
-            .onChange(of: dictation.errorMessage) { _, message in
+            .onChange(of: dictation.errorMessage) { message in
                 if shouldResetVoiceButton(for: message) {
                     isVoiceInputActive = false
                 }

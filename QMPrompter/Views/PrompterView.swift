@@ -116,17 +116,17 @@ struct PrompterView: View {
                 )
                 startDefaultSpeechIfNeeded(maxOffset: updatedState.maximumOffset)
             }
-            .onChange(of: script.scrollSpeed) { _, value in
+            .onChange(of: script.scrollSpeed) { value in
                 engine.setSpeed(value)
             }
-            .onChange(of: engine.speed) { _, value in
+            .onChange(of: engine.speed) { value in
                 script.scrollSpeed = value
                 scheduleSettingsSave()
             }
-            .onChange(of: engine.isPlaying) { _, _ in
+            .onChange(of: engine.isPlaying) { _ in
                 updateControlsAutoHide()
             }
-            .onChange(of: script.fontSize) { _, _ in
+            .onChange(of: script.fontSize) { _ in
                 refreshLayoutAndConfigureEngine(
                     width: proxy.size.width,
                     viewportHeight: proxy.size.height,
@@ -135,7 +135,7 @@ struct PrompterView: View {
                 )
                 scheduleSettingsSave()
             }
-            .onChange(of: script.content) { _, _ in
+            .onChange(of: script.content) { _ in
                 refreshLayoutAndConfigureEngine(
                     width: proxy.size.width,
                     viewportHeight: proxy.size.height,
@@ -143,7 +143,7 @@ struct PrompterView: View {
                     bottomPadding: bottomPadding
                 )
             }
-            .onChange(of: proxy.size.width) { _, width in
+            .onChange(of: proxy.size.width) { width in
                 refreshLayoutAndConfigureEngine(
                     width: width,
                     viewportHeight: proxy.size.height,
@@ -151,11 +151,11 @@ struct PrompterView: View {
                     bottomPadding: bottomPadding
                 )
             }
-            .onChange(of: maxOffset) { _, value in
+            .onChange(of: maxOffset) { value in
                 latestMaximumOffset = value
                 configureEngine(with: layout, maximumOffset: value)
             }
-            .onChange(of: speechFollower.progress) { _, progress in
+            .onChange(of: speechFollower.progress) { progress in
                 guard speechFollower.isListening else { return }
                 let candidateIndex = speechLineIndex(for: progress, promptLines: layout.lines)
                 let lineIndex = stabilizedSpeechLineIndex(
@@ -171,7 +171,7 @@ struct PrompterView: View {
                     maximumOffset: maxOffset
                 ))
             }
-            .onChange(of: speechFollower.state) { _, state in
+            .onChange(of: speechFollower.state) { state in
                 if state != .idle {
                     speechStartPending = false
                 }
@@ -181,11 +181,11 @@ struct PrompterView: View {
                 }
                 updateControlsAutoHide()
             }
-            .onChange(of: showSettingsPanel) { _, _ in
+            .onChange(of: showSettingsPanel) { _ in
                 updateControlsAutoHide()
             }
-            .onChange(of: script.textColorPreset) { _, _ in scheduleSettingsSave() }
-            .onChange(of: script.overlayOpacity) { _, _ in scheduleSettingsSave() }
+            .onChange(of: script.textColorPreset) { _ in scheduleSettingsSave() }
+            .onChange(of: script.overlayOpacity) { _ in scheduleSettingsSave() }
             .onDisappear {
                 endPrompterSession()
                 flushPendingSettingsSave()

@@ -40,7 +40,7 @@ struct ScriptListView: View {
                 if let script = store.script(with: id) {
                     ScriptEditorView(script: script)
                 } else {
-                    ContentUnavailableView("文稿不存在", systemImage: "doc.text.magnifyingglass")
+                    VStack(spacing: 12) { Image(systemName: "doc.text.magnifyingglass").font(.system(size: 36)).foregroundStyle(.secondary); Text("文稿不存在").font(.headline).foregroundStyle(.secondary) }
                 }
             }
             .safeAreaInset(edge: .bottom) {
