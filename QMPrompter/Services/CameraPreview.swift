@@ -397,9 +397,7 @@ extension BeautyCameraCoordinator: AVCaptureVideoDataOutputSampleBufferDelegate 
                        didOutput sampleBuffer: CMSampleBuffer,
                        from connection: AVCaptureConnection) {
         guard !isInvalidated, let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
-        // 旋转到竖屏方向（AVCaptureVideoDataOutput 传出的像素是横向的）
-        let rawImage = CIImage(cvPixelBuffer: pixelBuffer)
-        latestCIImage = rawImage.oriented(.right)
+        latestCIImage = CIImage(cvPixelBuffer: pixelBuffer)
         DispatchQueue.main.async { [weak self] in
             self?.mtkView?.setNeedsDisplay()
         }
@@ -410,15 +408,27 @@ extension BeautyCameraCoordinator: MTKViewDelegate {
     func mtkView(_ view: MTKView, drawableSizeWillChange size: CGSize) {}
     func draw(in view: MTKView) {
         guard !isInvalidated, let inputImage = latestCIImage, let drawable = view.currentDrawable else { return }
-        let processed = applyBeauty(to: inputImage)
-        let bounds = CGRect(origin: .zero, size: view.drawableSize)
-        let s = max(bounds.width / processed.extent.width, bounds.height / processed.extent.height)
-        let scaled = processed.transformed(by: CGAffineTransform(scaleX: s, y: s))
-        let ox = (bounds.width - scaled.extent.width) / 2
-        let oy = (bounds.height - scaled.extent.height) / 2
         guard let cb = commandQueue.makeCommandBuffer() else { return }
-        ciContext.render(scaled, to: drawable.texture, commandBuffer: cb,
-            bounds: CGRect(x: ox, y: oy, width: scaled.extent.width, height: scaled.extent.height),
+        
+        // 应用美颜滤镜
+        let processed = applyBeauty(to: inputImage)
+        
+        // 摄像头原始画面是横向的 (e.g. 640x480)，旋转到竖屏
+        let rotated = processed.oriented(.right)
+        
+        // aspectFill: 填满屏幕
+        let viewSize = view.drawableSize
+        let imageExtent = rotated.extent
+        let scale = max(viewSize.width / imageExtent.width, viewSize.height / imageExtent.height)
+        let destRect = CGRect(
+            x: (viewSize.width - imageExtent.width * scale) / 2,
+            y: (viewSize.height - imageExtent.height * scale) / 2,
+            width: imageExtent.width * scale,
+            height: imageExtent.height * scale
+        )
+        
+        ciContext.render(rotated, to: drawable.texture, commandBuffer: cb,
+            from: imageExtent, to: destRect,
             colorSpace: CGColorSpace(name: CGColorSpace.sRGB)!)
         cb.present(drawable)
         cb.commit()
