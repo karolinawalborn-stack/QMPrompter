@@ -10,7 +10,6 @@ struct PrompterView: View {
     @StateObject private var speechFollower = SpeechFollower()
     @State private var cameraPermission: CameraPermissionState = .checking
     @State private var showSettingsPanel = false
-    @State private var beautyConfig = BeautyConfig()
     @State private var speechLineIndex: Int?
     @State private var isManualDragging = false
     @State private var dragStartOffset: CGFloat = 0
@@ -48,7 +47,7 @@ struct PrompterView: View {
             let shouldHighlightCurrentLine = speechFollower.isListening
 
             ZStack {
-                BeautyCameraPreview(permissionState: $cameraPermission, config: $beautyConfig)
+                CameraPreview(permissionState: $cameraPermission)
                     .ignoresSafeArea()
                     .overlay(.black.opacity(cameraPermission == .authorized ? script.overlayOpacity : 0.78))
 
@@ -186,9 +185,6 @@ struct PrompterView: View {
                 updateControlsAutoHide()
             }
             .onChange(of: script.textColorPreset) { _ in scheduleSettingsSave() }
-
-
-
             .onChange(of: script.overlayOpacity) { _ in scheduleSettingsSave() }
             .onDisappear {
                 endPrompterSession()
@@ -688,57 +684,6 @@ struct PrompterView: View {
                 } else {
                     speechModeSettings(maxOffset: maxOffset)
                 }
-                
-                // Beauty controls
-                Divider()
-                    .overlay(.white.opacity(0.15))
-                    .padding(.horizontal, 4)
-                
-                VStack(spacing: 10) {
-                    Button {
-                        beautyConfig.isEnabled.toggle()
-                        Haptics.selection()
-                    } label: {
-                        HStack {
-                            Image(systemName: "camera.filters")
-                                .font(.system(size: 13, weight: .semibold))
-                                .foregroundStyle(.white.opacity(0.72))
-                            Text("美颜")
-                                .font(.system(size: 14, weight: .medium))
-                                .foregroundStyle(.white.opacity(0.82))
-                            Spacer()
-                            Image(systemName: beautyConfig.isEnabled ? "checkmark.circle.fill" : "circle")
-                                .font(.system(size: 17))
-                                .foregroundStyle(beautyConfig.isEnabled ? .white : .white.opacity(0.35))
-                        }
-                        .padding(.vertical, 4)
-                    }
-                    .buttonStyle(.plain)
-                    
-                    if beautyConfig.isEnabled {
-                        controlSlider(
-                            title: "磨皮",
-                            systemName: "face.smiling",
-                            value: Binding(
-                                get: { Double(beautyConfig.smoothing) },
-                                set: { beautyConfig.smoothing = Float($0) }
-                            ),
-                            range: 0...1,
-                            label: "\(Int(beautyConfig.smoothing * 100))%"
-                        )
-                        controlSlider(
-                            title: "提亮",
-                            systemName: "sun.max.fill",
-                            value: Binding(
-                                get: { Double(beautyConfig.brightness) },
-                                set: { beautyConfig.brightness = Float($0) }
-                            ),
-                            range: 0...0.3,
-                            label: "\(Int(beautyConfig.brightness * 100))%"
-                        )
-                    }
-                }
-                .padding(.horizontal, 8)
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 14)
@@ -1365,7 +1310,6 @@ private struct PromptProgressRail: View {
         guard maxOffset > 0 else { return 0 }
         return min(1, max(0, position.offset / maxOffset))
     }
-
 }
 
 private extension View {
@@ -1471,9 +1415,6 @@ private extension View {
             )
     }
 }
-
-
-
 
 #Preview {
     PrompterView(
