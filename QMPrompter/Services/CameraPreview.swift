@@ -418,7 +418,7 @@ extension BeautyCameraCoordinator: MTKViewDelegate {
         
         // aspectFill: 填满屏幕
         let viewSize = view.drawableSize
-        let imageExtent = rotated.extent
+        let imageExtent = processed.extent
         let scale = max(viewSize.width / imageExtent.width, viewSize.height / imageExtent.height)
         let destRect = CGRect(
             x: (viewSize.width - imageExtent.width * scale) / 2,
@@ -427,8 +427,8 @@ extension BeautyCameraCoordinator: MTKViewDelegate {
             height: imageExtent.height * scale
         )
         
-        ciContext.render(rotated, to: drawable.texture, commandBuffer: cb,
-            from: imageExtent, to: destRect,
+        ciContext.render(processed, to: drawable.texture, commandBuffer: cb,
+            bounds: destRect,
             colorSpace: CGColorSpace(name: CGColorSpace.sRGB)!)
         cb.present(drawable)
         cb.commit()
