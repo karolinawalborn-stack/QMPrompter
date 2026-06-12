@@ -50,14 +50,14 @@ struct AIGenerationView: View {
             .navigationTitle("AI 生成")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
+                ToolbarItem(placement: .navigationBarLeading) {
                     Button("取消") {
                         cancelGeneration()
                         close()
                     }
                 }
 
-                ToolbarItem(placement: .topBarTrailing) {
+                ToolbarItem(placement: .navigationBarTrailing) {
                     Button {
                         startGeneration()
                     } label: {
