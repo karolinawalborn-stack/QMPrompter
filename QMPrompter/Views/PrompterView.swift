@@ -688,14 +688,11 @@ struct PrompterView: View {
                 } else {
                     speechModeSettings(maxOffset: maxOffset)
                 }
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 14)
-            .frame(maxWidth: 390)
-                        if beautyConfig.isEnabled || true {
-                // Show beauty controls when beauty is on, or always show the toggle
+                
+                // Beauty controls
                 Divider()
                     .overlay(.white.opacity(0.15))
+                    .padding(.horizontal, 4)
                 
                 VStack(spacing: 10) {
                     beautyToggle
@@ -722,9 +719,11 @@ struct PrompterView: View {
                         )
                     }
                 }
-                .padding(.horizontal, 12)
+                .padding(.horizontal, 8)
             }
-            
+            .padding(.horizontal, 12)
+            .padding(.vertical, 14)
+            .frame(maxWidth: 390)
             .glassPanel(cornerRadius: 24)
             .padding(.horizontal, 18)
             .padding(.bottom, 16)
@@ -1347,6 +1346,27 @@ private struct PromptProgressRail: View {
         guard maxOffset > 0 else { return 0 }
         return min(1, max(0, position.offset / maxOffset))
     }
+    private var beautyToggle: some View {
+        Button {
+            beautyConfig.isEnabled.toggle()
+            Haptics.selection()
+        } label: {
+            HStack {
+                Image(systemName: "camera.filters")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(.white.opacity(0.72))
+                Text("美颜")
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.82))
+                Spacer()
+                Image(systemName: beautyConfig.isEnabled ? "checkmark.circle.fill" : "circle")
+                    .font(.system(size: 17))
+                    .foregroundStyle(beautyConfig.isEnabled ? .white : .white.opacity(0.35))
+            }
+            .padding(.vertical, 4)
+        }
+        .buttonStyle(.plain)
+    }
 }
 
 private extension View {
@@ -1454,27 +1474,7 @@ private extension View {
 }
 
 
-    private var beautyToggle: some View {
-        Button {
-            beautyConfig.isEnabled.toggle()
-            Haptics.selection()
-        } label: {
-            HStack {
-                Image(systemName: "camera.filters")
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(.white.opacity(0.72))
-                Text("美颜")
-                    .font(.system(size: 14, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.82))
-                Spacer()
-                Image(systemName: beautyConfig.isEnabled ? "checkmark.circle.fill" : "circle")
-                    .font(.system(size: 17))
-                    .foregroundStyle(beautyConfig.isEnabled ? .white : .white.opacity(0.35))
-            }
-            .padding(.vertical, 4)
-        }
-        .buttonStyle(.plain)
-    }
+
 
 #Preview {
     PrompterView(
