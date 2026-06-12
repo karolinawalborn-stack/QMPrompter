@@ -1,5 +1,7 @@
 import AVFoundation
 import CoreImage
+import AVFoundation
+import CoreImage
 import SwiftUI
 import UIKit
 
@@ -12,6 +14,7 @@ struct PrompterView: View {
     @StateObject private var speechFollower = SpeechFollower()
     @State private var cameraPermission: CameraPermissionState = .checking
     @State private var showSettingsPanel = false
+    @State private var beautyConfig = BeautyConfig()
     @State private var beautyConfig = BeautyConfig()
     @State private var speechLineIndex: Int?
     @State private var isManualDragging = false
@@ -1339,6 +1342,35 @@ private struct PromptProgressRail: View {
         }.buttonStyle(.plain)
     }
 
+
+    private var beautyControls: some View {
+        VStack(spacing: 10) {
+            Button {
+                beautyConfig.isEnabled.toggle()
+                Haptics.selection()
+            } label: {
+                HStack {
+                    Image(systemName: "camera.filters").font(.system(size: 13, weight: .semibold)).foregroundStyle(.white.opacity(0.72))
+                    Text(verbatim: "Beauty").font(.system(size: 14, weight: .medium)).foregroundStyle(.white.opacity(0.82))
+                    Spacer()
+                    Image(systemName: beautyConfig.isEnabled ? "checkmark.circle.fill" : "circle").font(.system(size: 17))
+                        .foregroundStyle(beautyConfig.isEnabled ? .white : .white.opacity(0.35))
+                }.padding(.vertical, 4)
+            }.buttonStyle(.plain)
+
+            if beautyConfig.isEnabled {
+                controlSlider(title: "Smooth", systemName: "face.smiling",
+                    value: Binding(get: { Double(beautyConfig.smoothing) }, set: { beautyConfig.smoothing = Float($0) }),
+                    range: 0...1, label: "\(Int(beautyConfig.smoothing * 100))%")
+                controlSlider(title: "Bright", systemName: "sun.max.fill",
+                    value: Binding(get: { Double(beautyConfig.brightness) }, set: { beautyConfig.brightness = Float($0) }),
+                    range: 0...0.3, label: "\(Int(beautyConfig.brightness * 100))%")
+            }
+        }
+        .padding(.horizontal, 8)
+    }
+
+
     private var currentProgress: CGFloat {
         guard maxOffset > 0 else { return 0 }
         return min(1, max(0, position.offset / maxOffset))
@@ -1626,6 +1658,153 @@ struct BeautyCameraPreview: UIViewRepresentable {
 }
 
 // MARK: - BeautyConfig must be in global scope for both files to use
+
+
+// MARK: - Beauty Camera (CoreGraphics render, no Metal)
+
+struct BeautyConfig {
+    var isEnabled = false
+    var smoothing: Float = 0.3
+    var brightness: Float = 0.08
+}
+
+class CameraFilterUIView: UIView {
+    private let ci = CIContext()
+    var currentImage: CIImage? { didSet { setNeedsDisplay() } }
+    override func draw(_ rect: CGRect) {
+        guard let img = currentImage, let cg = ci.createCGImage(img, from: img.extent) else { return }
+        guard let ctx = UIGraphicsGetCurrentContext() else { return }
+        ctx.saveGState(); ctx.translateBy(x: 0, y: rect.height); ctx.scaleBy(x: 1, y: -1)
+        let s = max(rect.width / CGFloat(cg.width), rect.height / CGFloat(cg.height))
+        ctx.draw(cg, in: CGRect(x: (rect.width-CGFloat(cg.width)*s)/2, y: (rect.height-CGFloat(cg.height)*s)/2, width: CGFloat(cg.width)*s, height: CGFloat(cg.height)*s))
+        ctx.restoreGState()
+    }
+}
+
+final class BeautyCamCoordinator: NSObject {
+    let session = AVCaptureSession()
+    private let sq = DispatchQueue(label: "com.qiaomu.prompter.beauty")
+    private let vdo = AVCaptureVideoDataOutput()
+    private let ctx = CIContext()
+    private weak var view: CameraFilterUIView?
+    private var ps: Binding<CameraPermissionState>
+    var config: BeautyConfig
+    private var configured = false
+    private var dead = false
+    private let blurF = CIFilter(name: "CIGaussianBlur")!
+    private let blendF = CIFilter(name: "CIBlendWithAlphaMask")!
+    private let colorF = CIFilter(name: "CIColorControls")!
+
+    init(ps: Binding<CameraPermissionState>, config: Binding<BeautyConfig>) {
+        self.ps = ps; self.config = config.wrappedValue; super.init()
+        NotificationCenter.default.addObserver(self, selector: #selector(willResign), name: UIApplication.willResignActiveNotification, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(didBecome), name: UIApplication.didBecomeActiveNotification, object: nil)
+    }
+    deinit { NotificationCenter.default.removeObserver(self); invalidate() }
+
+    func attach(v: CameraFilterUIView) { view = v }
+
+    func begin() {
+        guard !dead else { return }
+        switch AVCaptureDevice.authorizationStatus(for: .video) {
+        case .authorized: setState(.authorized); run()
+        case .notDetermined:
+            setState(.checking)
+            AVCaptureDevice.requestAccess(for: .video) { [weak self] g in
+                guard let self, !dead else { return }
+                setState(g ? .authorized : .denied)
+                if g { run() }
+            }
+        case .denied, .restricted: setState(.denied)
+        @unknown default: setState(.unavailable)
+        }
+    }
+    func setState(_ s: CameraPermissionState) { DispatchQueue.main.async { self.ps.wrappedValue = s } }
+    func invalidate() { dead = true; view = nil; stop() }
+    func stop() { sq.async { [weak self] in if self?.session.isRunning == true { self?.session.stopRunning() } } }
+
+    private func run() {
+        sq.async { [weak self] in
+            guard let self, !dead else { return }
+            if !configured { setup() }
+            if configured, !session.isRunning { session.startRunning() }
+        }
+    }
+    private func setup() {
+        session.beginConfiguration(); session.sessionPreset = .medium
+        defer { session.commitConfiguration() }
+        guard let cam = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .front),
+              let inp = try? AVCaptureDeviceInput(device: cam), session.canAddInput(inp)
+        else { setState(.unavailable); return }
+        session.addInput(inp)
+        vdo.videoSettings = [kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA]
+        vdo.alwaysDiscardsLateVideoFrames = true; vdo.setSampleBufferDelegate(self, queue: sq)
+        if session.canAddOutput(vdo) { session.addOutput(vdo) }
+        if let c = vdo.connection(with: .video) { c.isVideoMirrored = true }
+        configured = true
+    }
+
+    private func process(_ input: CIImage) -> CIImage {
+        guard config.isEnabled else { return input }
+        let sm = max(0, min(1, config.smoothing)); let br = max(0, min(0.3, config.brightness))
+        var o = input
+        if sm > 0.01 {
+            blurF.setValue(o, forKey: kCIInputImageKey)
+            blurF.setValue(Double(sm)*8.0+1.0, forKey: kCIInputRadiusKey)
+            guard let bl = blurF.outputImage else { return input }
+            let ma = max(0.05, min(0.45, Double(sm)*0.5))
+            let mk = CIImage(color: CIColor(red: 1, green: 1, blue: 1, alpha: CGFloat(ma))).cropped(to: o.extent)
+            blendF.setValue(bl, forKey: kCIInputImageKey)
+            blendF.setValue(o, forKey: kCIInputBackgroundImageKey)
+            blendF.setValue(mk, forKey: kCIInputMaskImageKey)
+            if let b = blendF.outputImage { o = b }
+        }
+        if br > 0.01 {
+            colorF.setValue(o, forKey: kCIInputImageKey)
+            colorF.setValue(br, forKey: kCIInputBrightnessKey)
+            colorF.setValue(1.0+br*0.3, forKey: kCIInputSaturationKey)
+            colorF.setValue(1.0+br*0.05, forKey: kCIInputContrastKey)
+            if let c = colorF.outputImage { o = c }
+        }
+        return o
+    }
+
+    @objc func willResign() { stop() }
+    @objc func didBecome() {
+        guard !dead else { return }
+        guard AVCaptureDevice.authorizationStatus(for: .video) == .authorized else { begin(); return }
+        setState(.authorized); start()
+    }
+    private func start() {
+        sq.async { [weak self] in
+            guard let self, !dead else { return }
+            if !configured { setup() }
+            if configured, !session.isRunning { session.startRunning() }
+        }
+    }
+}
+
+extension BeautyCamCoordinator: AVCaptureVideoDataOutputSampleBufferDelegate {
+    func captureOutput(_ output: AVCaptureOutput, didOutput sb: CMSampleBuffer, from connection: AVCaptureConnection) {
+        guard !dead, let pb = CMSampleBufferGetImageBuffer(sb) else { return }
+        let rotated = CIImage(cvPixelBuffer: pb).oriented(.right)
+        let result = process(rotated)
+        DispatchQueue.main.async { [weak self] in self?.view?.currentImage = result }
+    }
+}
+
+struct BeautyCameraPreview: UIViewRepresentable {
+    @Binding var permissionState: CameraPermissionState
+    @Binding var config: BeautyConfig
+    func makeCoordinator() -> BeautyCamCoordinator { BeautyCamCoordinator(ps: $permissionState, config: $config) }
+    func makeUIView(context: Context) -> CameraFilterUIView {
+        let v = CameraFilterUIView(); v.backgroundColor = .black
+        context.coordinator.attach(v: v); context.coordinator.begin()
+        return v
+    }
+    func updateUIView(_ v: CameraFilterUIView, context: Context) { context.coordinator.config = config }
+    static func dismantleUIView(_ v: CameraFilterUIView, coordinator: BeautyCamCoordinator) { coordinator.invalidate() }
+}
 
 #Preview {
     PrompterView(
