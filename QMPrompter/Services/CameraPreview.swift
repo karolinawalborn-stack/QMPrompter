@@ -237,6 +237,7 @@ final class BeautyCameraCoordinator: NSObject {
     private var permissionState: Binding<CameraPermissionState>
     var config: BeautyConfig
     private var isInvalidated = false
+    private var didConfigure = false
 
     private let blurFilter = CIFilter(name: "CIGaussianBlur")!
     private let blendFilter = CIFilter(name: "CIBlendWithAlphaMask")!
@@ -317,14 +318,16 @@ final class BeautyCameraCoordinator: NSObject {
     private func startSession() {
         sessionQueue.async { [weak self] in
             guard let self, !isInvalidated else { return }
-            configureSession()
-            if !session.isRunning { session.startRunning() }
+            if !didConfigure {
+                configureSession()
+            }
+            if didConfigure, !session.isRunning { session.startRunning() }
         }
     }
 
     private func configureSession() {
         session.beginConfiguration()
-        session.sessionPreset = .high
+        session.sessionPreset = .medium
         defer { session.commitConfiguration() }
         guard let camera = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .front),
               let input = try? AVCaptureDeviceInput(device: camera),
@@ -340,10 +343,12 @@ final class BeautyCameraCoordinator: NSObject {
         if session.canAddOutput(videoDataOutput) {
             session.addOutput(videoDataOutput)
         }
+        // 延迟设置连接属性，等 session 稳定后再配置
         if let connection = videoDataOutput.connection(with: .video) {
             connection.isVideoMirrored = true
             connection.videoOrientation = .portrait
         }
+        didConfigure = true
     }
 
     private func setPermissionState(_ state: CameraPermissionState) {
