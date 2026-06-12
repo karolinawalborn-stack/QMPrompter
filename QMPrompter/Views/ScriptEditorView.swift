@@ -652,25 +652,6 @@ private extension View {
     func editorGlassButton() -> some View {
         let shape = Capsule()
 
-        if #available(iOS 26.0, *) {
-            glassEffect(.regular.tint(.white.opacity(0.06)).interactive(), in: shape)
-                .overlay(
-                    shape
-                        .stroke(
-                            LinearGradient(
-                                colors: [
-                                    .white.opacity(0.58),
-                                    .white.opacity(0.22),
-                                    .white.opacity(0.10)
-                                ],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            ),
-                            lineWidth: 0.8
-                        )
-                )
-                .shadow(color: .black.opacity(0.08), radius: 18, y: 8)
-        } else {
             background(.ultraThinMaterial, in: shape)
                 .overlay(
                     shape
@@ -695,25 +676,6 @@ private extension View {
     func editorSettingSurface(cornerRadius: CGFloat = 18) -> some View {
         let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
 
-        if #available(iOS 26.0, *) {
-            glassEffect(.regular.tint(.white.opacity(0.045)).interactive(), in: shape)
-                .background(Color(.secondarySystemGroupedBackground).opacity(0.46), in: shape)
-                .overlay(
-                    shape.stroke(
-                        LinearGradient(
-                            colors: [
-                                .white.opacity(0.54),
-                                .white.opacity(0.18),
-                                .black.opacity(0.035)
-                            ],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        ),
-                        lineWidth: 0.7
-                    )
-                )
-                .shadow(color: .black.opacity(0.05), radius: 14, y: 8)
-        } else {
             background(.ultraThinMaterial, in: shape)
                 .background(Color(.secondarySystemGroupedBackground).opacity(0.46), in: shape)
                 .overlay(
