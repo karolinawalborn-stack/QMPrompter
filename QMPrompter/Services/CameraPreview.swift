@@ -397,7 +397,9 @@ extension BeautyCameraCoordinator: AVCaptureVideoDataOutputSampleBufferDelegate 
                        didOutput sampleBuffer: CMSampleBuffer,
                        from connection: AVCaptureConnection) {
         guard !isInvalidated, let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
-        latestCIImage = CIImage(cvPixelBuffer: pixelBuffer)
+        // 旋转到竖屏方向（AVCaptureVideoDataOutput 传出的像素是横向的）
+        let rawImage = CIImage(cvPixelBuffer: pixelBuffer)
+        latestCIImage = rawImage.oriented(.right)
         DispatchQueue.main.async { [weak self] in
             self?.mtkView?.setNeedsDisplay()
         }
