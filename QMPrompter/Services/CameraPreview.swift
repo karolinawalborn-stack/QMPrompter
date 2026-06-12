@@ -246,7 +246,7 @@ final class BeautyCameraCoordinator: NSObject {
         self.permissionState = permissionState
         self.config = config.wrappedValue
         guard let device = MTLCreateSystemDefaultDevice() else {
-            fatalError("Metal not available")
+            fatalError("Metal not available on this device")
         }
         self.metalDevice = device
         self.ciContext = CIContext(mtlDevice: device, options: [
@@ -278,12 +278,27 @@ final class BeautyCameraCoordinator: NSObject {
 
     func requestAndStart() {
         guard !isInvalidated else { return }
-        guard AVCaptureDevice.authorizationStatus(for: .video) == .authorized else {
+        
+        switch AVCaptureDevice.authorizationStatus(for: .video) {
+        case .authorized:
+            setPermissionState(.authorized)
+            startSession()
+        case .notDetermined:
+            setPermissionState(.checking)
+            AVCaptureDevice.requestAccess(for: .video) { [weak self] granted in
+                guard let self, !self.isInvalidated else { return }
+                DispatchQueue.main.async {
+                    self.setPermissionState(granted ? .authorized : .denied)
+                }
+                if granted {
+                    self.startSession()
+                }
+            }
+        case .denied, .restricted:
             setPermissionState(.denied)
-            return
+        @unknown default:
+            setPermissionState(.unavailable)
         }
-        setPermissionState(.authorized)
-        startSession()
     }
 
     func invalidate() {
