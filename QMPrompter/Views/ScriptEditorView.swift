@@ -107,7 +107,7 @@ struct ScriptEditorView: View {
         }
         .toolbar {
             if showsCancelButton {
-                ToolbarItem(placement: .navigationBarLeading) {
+                ToolbarItem(id: "cancel", placement: .navigationBarLeading) {
                     Button("取消") {
                         Haptics.selection()
                         cancelEditing()
@@ -115,7 +115,7 @@ struct ScriptEditorView: View {
                 }
             }
 
-            ToolbarItem(placement: .principal) {
+            ToolbarItem(id: "title", placement: .principal) {
                 Button {
                     Haptics.selection()
                     beginTitleEditing()
@@ -135,7 +135,7 @@ struct ScriptEditorView: View {
                 .accessibilityLabel("修改文稿名")
             }
 
-            ToolbarItem(placement: .navigationBarTrailing) {
+            ToolbarItem(id: "save", placement: .navigationBarTrailing) {
                 Button("保存") {
                     Haptics.success()
                     save()

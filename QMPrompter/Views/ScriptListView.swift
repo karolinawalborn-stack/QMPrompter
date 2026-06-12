@@ -53,7 +53,7 @@ struct ScriptListView: View {
                 }
             }
             .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
+                ToolbarItem(id: "settings", placement: .navigationBarLeading) {
                     Button {
                         Haptics.selection()
                         showSettings = true
@@ -68,7 +68,7 @@ struct ScriptListView: View {
                     .accessibilityLabel("设置")
                 }
 
-                ToolbarItem(placement: .navigationBarTrailing) {
+                ToolbarItem(id: "add", placement: .navigationBarTrailing) {
                     Menu {
                         Button {
                             performNewScriptAction(.manualInput)
