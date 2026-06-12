@@ -10,6 +10,7 @@ struct PrompterView: View {
     @StateObject private var speechFollower = SpeechFollower()
     @State private var cameraPermission: CameraPermissionState = .checking
     @State private var showSettingsPanel = false
+    @State private var beautyConfig = BeautyConfig()
     @State private var speechLineIndex: Int?
     @State private var isManualDragging = false
     @State private var dragStartOffset: CGFloat = 0
@@ -47,7 +48,7 @@ struct PrompterView: View {
             let shouldHighlightCurrentLine = speechFollower.isListening
 
             ZStack {
-                CameraPreview(permissionState: $cameraPermission)
+                BeautyCameraPreview(permissionState: $cameraPermission, config: $beautyConfig)
                     .ignoresSafeArea()
                     .overlay(.black.opacity(cameraPermission == .authorized ? script.overlayOpacity : 0.78))
 
@@ -185,6 +186,30 @@ struct PrompterView: View {
                 updateControlsAutoHide()
             }
             .onChange(of: script.textColorPreset) { _ in scheduleSettingsSave() }
+
+
+    private var beautyToggle: some View {
+        Button {
+            beautyConfig.isEnabled.toggle()
+            Haptics.selection()
+        } label: {
+            HStack {
+                Image(systemName: "camera.filters")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(.white.opacity(0.72))
+                Text("美颜")
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.82))
+                Spacer()
+                Image(systemName: beautyConfig.isEnabled ? "checkmark.circle.fill" : "circle")
+                    .font(.system(size: 17))
+                    .foregroundStyle(beautyConfig.isEnabled ? .white : .white.opacity(0.35))
+            }
+            .padding(.vertical, 4)
+        }
+        .buttonStyle(.plain)
+    }
+
             .onChange(of: script.overlayOpacity) { _ in scheduleSettingsSave() }
             .onDisappear {
                 endPrompterSession()
@@ -688,6 +713,39 @@ struct PrompterView: View {
             .padding(.horizontal, 12)
             .padding(.vertical, 14)
             .frame(maxWidth: 390)
+                        if beautyConfig.isEnabled || true {
+                // Show beauty controls when beauty is on, or always show the toggle
+                Divider()
+                    .overlay(.white.opacity(0.15))
+                
+                VStack(spacing: 10) {
+                    beautyToggle
+                    if beautyConfig.isEnabled {
+                        controlSlider(
+                            title: "磨皮",
+                            systemName: "face.smiling",
+                            value: Binding(
+                                get: { Double(beautyConfig.smoothing) },
+                                set: { beautyConfig.smoothing = Float($0) }
+                            ),
+                            range: 0...1,
+                            label: "\(Int(beautyConfig.smoothing * 100))%"
+                        )
+                        controlSlider(
+                            title: "提亮",
+                            systemName: "sun.max.fill",
+                            value: Binding(
+                                get: { Double(beautyConfig.brightness) },
+                                set: { beautyConfig.brightness = Float($0) }
+                            ),
+                            range: 0...0.3,
+                            label: "\(Int(beautyConfig.brightness * 100))%"
+                        )
+                    }
+                }
+                .padding(.horizontal, 12)
+            }
+            
             .glassPanel(cornerRadius: 24)
             .padding(.horizontal, 18)
             .padding(.bottom, 16)
