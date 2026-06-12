@@ -22,13 +22,10 @@
 		01000000000000000000000D /* APIKeyStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 02000000000000000000000E /* APIKeyStore.swift */; };
 		01000000000000000000000E /* DeepSeekScriptGenerator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 02000000000000000000000F /* DeepSeekScriptGenerator.swift */; };
 		01000000000000000000000F /* PromptDictation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 020000000000000000000010 /* PromptDictation.swift */; };
-		010000000000000000000014 /* GlassEffectCompat.swift in Sources */ = {isa = PBXBuildFile; fileRef = 020000000000000000000015 /* GlassEffectCompat.swift */; };
 		010000000000000000000010 /* AppSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 020000000000000000000011 /* AppSettingsView.swift */; };
 		010000000000000000000011 /* AIGenerationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 020000000000000000000012 /* AIGenerationView.swift */; };
 		010000000000000000000012 /* AIModelFetcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = 020000000000000000000013 /* AIModelFetcher.swift */; };
 		010000000000000000000013 /* AIHTTPClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 020000000000000000000014 /* AIHTTPClient.swift */; };
-				010000000000000000000014 /* GlassEffectCompat.swift in Sources */,
-				020000000000000000000015 /* GlassEffectCompat.swift */,
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -48,13 +45,11 @@
 		02000000000000000000000D /* SpeechFollower.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeechFollower.swift; sourceTree = "<group>"; };
 		02000000000000000000000E /* APIKeyStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIKeyStore.swift; sourceTree = "<group>"; };
 		02000000000000000000000F /* DeepSeekScriptGenerator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeepSeekScriptGenerator.swift; sourceTree = "<group>"; };
-		020000000000000000000015 /* GlassEffectCompat.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GlassEffectCompat.swift; sourceTree = "<group>"; };
 		020000000000000000000010 /* PromptDictation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PromptDictation.swift; sourceTree = "<group>"; };
 		020000000000000000000011 /* AppSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppSettingsView.swift; sourceTree = "<group>"; };
 		020000000000000000000012 /* AIGenerationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIGenerationView.swift; sourceTree = "<group>"; };
 		020000000000000000000013 /* AIModelFetcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIModelFetcher.swift; sourceTree = "<group>"; };
 		020000000000000000000014 /* AIHTTPClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIHTTPClient.swift; sourceTree = "<group>"; };
-				020000000000000000000015 /* GlassEffectCompat.swift */,
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -117,7 +112,6 @@
 				02000000000000000000000F /* DeepSeekScriptGenerator.swift */,
 				020000000000000000000013 /* AIModelFetcher.swift */,
 				020000000000000000000014 /* AIHTTPClient.swift */,
-				020000000000000000000015 /* GlassEffectCompat.swift */,
 				020000000000000000000010 /* PromptDictation.swift */,
 			);
 			path = Services;
@@ -230,7 +224,6 @@
 				010000000000000000000011 /* AIGenerationView.swift in Sources */,
 				010000000000000000000012 /* AIModelFetcher.swift in Sources */,
 				010000000000000000000013 /* AIHTTPClient.swift in Sources */,
-				010000000000000000000014 /* GlassEffectCompat.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
