@@ -415,6 +415,13 @@ private extension View {
     func liquidCardSurface(cornerRadius: CGFloat) -> some View {
         let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
 
+        if #available(iOS 26.0, *) {
+            glassEffect(.regular.tint(.white.opacity(0.04)).interactive(), in: shape)
+                .background(cardFill(shape))
+                .overlay(cardBorder(shape))
+                .shadow(color: .black.opacity(0.055), radius: 16, y: 8)
+                .shadow(color: .white.opacity(0.44), radius: 1, y: -0.5)
+        } else {
             background(.ultraThinMaterial, in: shape)
                 .background(cardFill(shape))
                 .overlay(cardBorder(shape))
@@ -426,6 +433,14 @@ private extension View {
     func liquidSearchSurface() -> some View {
         let shape = Capsule()
 
+        if #available(iOS 26.0, *) {
+            glassEffect(.regular.tint(.white.opacity(0.05)).interactive(), in: shape)
+                .background(.white.opacity(0.34), in: shape)
+                .overlay(
+                    shape.stroke(.white.opacity(0.46), lineWidth: 0.65)
+                )
+                .shadow(color: .black.opacity(0.065), radius: 18, y: 8)
+        } else {
             background(.ultraThinMaterial, in: shape)
                 .background(.white.opacity(0.32), in: shape)
                 .overlay(

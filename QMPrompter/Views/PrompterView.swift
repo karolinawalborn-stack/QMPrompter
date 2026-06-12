@@ -1315,6 +1315,14 @@ private struct PromptProgressRail: View {
 private extension View {
     @ViewBuilder
     func glassCapsule() -> some View {
+        if #available(iOS 26.0, *) {
+            glassEffect(.regular.tint(.white.opacity(0.04)).interactive(), in: Capsule())
+                .overlay(
+                    Capsule()
+                        .stroke(.white.opacity(0.20), lineWidth: 0.7)
+                )
+                .shadow(color: .black.opacity(0.12), radius: 16, y: 8)
+        } else {
             background(.ultraThinMaterial, in: Capsule())
                 .overlay(
                     Capsule()
@@ -1326,6 +1334,14 @@ private extension View {
 
     @ViewBuilder
     func glassCircle() -> some View {
+        if #available(iOS 26.0, *) {
+            glassEffect(.regular.tint(.white.opacity(0.04)).interactive(), in: Circle())
+                .overlay(
+                    Circle()
+                        .stroke(.white.opacity(0.20), lineWidth: 0.7)
+                )
+                .shadow(color: .black.opacity(0.12), radius: 16, y: 8)
+        } else {
             background(.ultraThinMaterial, in: Circle())
                 .overlay(
                     Circle()
@@ -1339,6 +1355,25 @@ private extension View {
     func glassPanel(cornerRadius: CGFloat) -> some View {
         let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
 
+        if #available(iOS 26.0, *) {
+            glassEffect(.regular.tint(.white.opacity(0.04)).interactive(), in: shape)
+                .overlay(
+                    shape
+                        .stroke(
+                            LinearGradient(
+                                colors: [
+                                    .white.opacity(0.34),
+                                    .white.opacity(0.12),
+                                    .white.opacity(0.06)
+                                ],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            ),
+                            lineWidth: 0.8
+                        )
+                )
+                .shadow(color: .black.opacity(0.16), radius: 24, y: 14)
+        } else {
             background(.ultraThinMaterial, in: shape)
                 .overlay(
                     shape

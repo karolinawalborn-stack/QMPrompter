@@ -516,6 +516,12 @@ private extension View {
     func aiGenerationGlassSurface(cornerRadius: CGFloat) -> some View {
         let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
 
+        if #available(iOS 26.0, *) {
+            glassEffect(.regular.tint(.white.opacity(0.05)).interactive(), in: shape)
+                .background(.white.opacity(0.28), in: shape)
+                .overlay(aiGenerationBorder(shape))
+                .shadow(color: .black.opacity(0.07), radius: 18, y: 9)
+        } else {
             background(.ultraThinMaterial, in: shape)
                 .background(.white.opacity(0.26), in: shape)
                 .overlay(aiGenerationBorder(shape))

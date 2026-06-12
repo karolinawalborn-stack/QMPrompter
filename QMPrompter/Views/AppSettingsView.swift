@@ -779,6 +779,12 @@ private extension View {
     func settingsGlassSurface(cornerRadius: CGFloat) -> some View {
         let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
 
+        if #available(iOS 26.0, *) {
+            glassEffect(.regular.tint(.white.opacity(0.04)).interactive(), in: shape)
+                .background(.white.opacity(0.26), in: shape)
+                .overlay(settingsGlassBorder(shape))
+                .shadow(color: .black.opacity(0.065), radius: 18, y: 9)
+        } else {
             background(.ultraThinMaterial, in: shape)
                 .background(.white.opacity(0.24), in: shape)
                 .overlay(settingsGlassBorder(shape))
