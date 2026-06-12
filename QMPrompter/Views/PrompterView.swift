@@ -1566,7 +1566,7 @@ class BeautyCamCoord: NSObject {
 extension BeautyCamCoord: AVCaptureVideoDataOutputSampleBufferDelegate {
     func captureOutput(_ output: AVCaptureOutput, didOutput sb: CMSampleBuffer, from connection: AVCaptureConnection) {
         guard !dead, let pb = CMSampleBufferGetImageBuffer(sb) else { return }
-        DispatchQueue.main.async { [weak self] in self?.v?.image = self?.process(CIImage(cvPixelBuffer: pb).oriented(.right)) }
+        DispatchQueue.main.async { [weak self] in self?.v?.image = self?.process(CIImage(cvPixelBuffer: pb).oriented(.left)) }
     }
 }
 struct BeautyCameraPreview: UIViewRepresentable {
