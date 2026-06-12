@@ -188,27 +188,6 @@ struct PrompterView: View {
             .onChange(of: script.textColorPreset) { _ in scheduleSettingsSave() }
 
 
-    private var beautyToggle: some View {
-        Button {
-            beautyConfig.isEnabled.toggle()
-            Haptics.selection()
-        } label: {
-            HStack {
-                Image(systemName: "camera.filters")
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(.white.opacity(0.72))
-                Text("美颜")
-                    .font(.system(size: 14, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.82))
-                Spacer()
-                Image(systemName: beautyConfig.isEnabled ? "checkmark.circle.fill" : "circle")
-                    .font(.system(size: 17))
-                    .foregroundStyle(beautyConfig.isEnabled ? .white : .white.opacity(0.35))
-            }
-            .padding(.vertical, 4)
-        }
-        .buttonStyle(.plain)
-    }
 
             .onChange(of: script.overlayOpacity) { _ in scheduleSettingsSave() }
             .onDisappear {
@@ -1473,6 +1452,29 @@ private extension View {
             )
     }
 }
+
+
+    private var beautyToggle: some View {
+        Button {
+            beautyConfig.isEnabled.toggle()
+            Haptics.selection()
+        } label: {
+            HStack {
+                Image(systemName: "camera.filters")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(.white.opacity(0.72))
+                Text("美颜")
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.82))
+                Spacer()
+                Image(systemName: beautyConfig.isEnabled ? "checkmark.circle.fill" : "circle")
+                    .font(.system(size: 17))
+                    .foregroundStyle(beautyConfig.isEnabled ? .white : .white.opacity(0.35))
+            }
+            .padding(.vertical, 4)
+        }
+        .buttonStyle(.plain)
+    }
 
 #Preview {
     PrompterView(
