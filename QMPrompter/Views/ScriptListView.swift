@@ -52,8 +52,8 @@ struct ScriptListView: View {
                         .background(HomeSearchDockBackground())
                 }
             }
-            .toolbar {
-                ToolbarItemGroup(placement: .navigationBarLeading) {
+            .safeAreaInset(edge: .top, spacing: 0) {
+                HStack {
                     Button {
                         Haptics.selection()
                         showSettings = true
@@ -66,9 +66,9 @@ struct ScriptListView: View {
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel("设置")
-                }
 
-                ToolbarItemGroup(placement: .navigationBarTrailing) {
+                    Spacer()
+
                     Menu {
                         Button {
                             performNewScriptAction(.manualInput)
@@ -91,6 +91,9 @@ struct ScriptListView: View {
                     .buttonStyle(.plain)
                     .accessibilityLabel("新建文稿")
                 }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 8)
+                .background(.ultraThinMaterial)
             }
             .sheet(isPresented: $showSettings) {
                 AppSettingsView(apiKeyStore: apiKeyStore)

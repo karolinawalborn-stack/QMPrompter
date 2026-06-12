@@ -105,17 +105,18 @@ struct ScriptEditorView: View {
                 EditorDockBackground()
             }
         }
-        .toolbar {
-            if showsCancelButton {
-                ToolbarItemGroup(placement: .navigationBarLeading) {
+                .safeAreaInset(edge: .top, spacing: 0) {
+            HStack(spacing: 0) {
+                if showsCancelButton {
                     Button("取消") {
                         Haptics.selection()
                         cancelEditing()
                     }
+                    .font(.body)
                 }
-            }
 
-            ToolbarItemGroup(placement: .principal) {
+                Spacer()
+
                 Button {
                     Haptics.selection()
                     beginTitleEditing()
@@ -133,25 +134,19 @@ struct ScriptEditorView: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("修改文稿名")
-            }
 
-            ToolbarItemGroup(placement: .navigationBarTrailing) {
-                Button("保存") {
-                    Haptics.success()
-                    save()
-                    dismiss()
-                }
-                .disabled(!canPersistScript)
-            }
-
-            ToolbarItemGroup(placement: .keyboard) {
                 Spacer()
 
-                Button("完成") {
-                    editorFocused = false
+                Button("保存") {
+                    Haptics.success()
+                    saveAndDismiss()
                 }
-                .fontWeight(.semibold)
+                .font(.headline.weight(.semibold))
+                .disabled(title.isEmpty)
             }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 8)
+            .background(.ultraThinMaterial)
         }
         .fullScreenCover(isPresented: $showPrompter) {
             PrompterView(script: $script) {
