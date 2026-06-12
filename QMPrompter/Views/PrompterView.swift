@@ -688,7 +688,30 @@ struct PrompterView: View {
                     speechModeSettings(maxOffset: maxOffset)
                 }
                 Divider().overlay(.white.opacity(0.15)).padding(.horizontal, 4)
-                beautyControls
+                VStack(spacing: 10) {
+            Button {
+                beautyConfig.isEnabled.toggle()
+                Haptics.selection()
+            } label: {
+                HStack {
+                    Image(systemName: camera.filters).font(.system(size: 13, weight: .semibold)).foregroundStyle(.white.opacity(0.72))
+                    Text(verbatim: Beauty).font(.system(size: 14, weight: .medium)).foregroundStyle(.white.opacity(0.82))
+                    Spacer()
+                    Image(systemName: beautyConfig.isEnabled ? checkmark.circle.fill : circle).font(.system(size: 17))
+                        .foregroundStyle(beautyConfig.isEnabled ? .white : .white.opacity(0.35))
+                }.padding(.vertical, 4)
+            }.buttonStyle(.plain)
+
+            if beautyConfig.isEnabled {
+                controlSlider(title: Smooth, systemName: face.smiling,
+                    value: Binding(get: { Double(beautyConfig.smoothing) }, set: { beautyConfig.smoothing = Float($0) }),
+                    range: 0...1, label: "\(Int(beautyConfig.smoothing * 100))%")
+                controlSlider(title: Bright, systemName: sun.max.fill,
+                    value: Binding(get: { Double(beautyConfig.brightness) }, set: { beautyConfig.brightness = Float($0) }),
+                    range: 0...0.3, label: "\(Int(beautyConfig.brightness * 100))%")
+            }
+        }
+        .padding(.horizontal, 8)
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 14)
@@ -1311,33 +1334,6 @@ private struct PromptProgressRail: View {
         .frame(width: 4)
     }
 
-
-    private var beautyControls: some View {
-        VStack(spacing: 10) {
-            Button {
-                beautyConfig.isEnabled.toggle()
-                Haptics.selection()
-            } label: {
-                HStack {
-                    Image(systemName: "camera.filters").font(.system(size: 13, weight: .semibold)).foregroundStyle(.white.opacity(0.72))
-                    Text(verbatim: "Beauty").font(.system(size: 14, weight: .medium)).foregroundStyle(.white.opacity(0.82))
-                    Spacer()
-                    Image(systemName: beautyConfig.isEnabled ? "checkmark.circle.fill" : "circle").font(.system(size: 17))
-                        .foregroundStyle(beautyConfig.isEnabled ? .white : .white.opacity(0.35))
-                }.padding(.vertical, 4)
-            }.buttonStyle(.plain)
-
-            if beautyConfig.isEnabled {
-                controlSlider(title: "Smooth", systemName: "face.smiling",
-                    value: Binding(get: { Double(beautyConfig.smoothing) }, set: { beautyConfig.smoothing = Float($0) }),
-                    range: 0...1, label: "\(Int(beautyConfig.smoothing * 100))%")
-                controlSlider(title: "Bright", systemName: "sun.max.fill",
-                    value: Binding(get: { Double(beautyConfig.brightness) }, set: { beautyConfig.brightness = Float($0) }),
-                    range: 0...0.3, label: "\(Int(beautyConfig.brightness * 100))%")
-            }
-        }
-        .padding(.horizontal, 8)
-    }
 
 
     private var currentProgress: CGFloat {
