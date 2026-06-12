@@ -121,7 +121,7 @@ struct ScriptListView: View {
             } message: {
                 Text(deleteConfirmationMessage)
             }
-            .onChange(of: showDeleteConfirmation) { _, isPresented in
+            .onChange(of: showDeleteConfirmation) { isPresented in
                 if !isPresented {
                     scriptPendingDeletion = nil
                 }

@@ -139,10 +139,11 @@ struct ScriptEditorView: View {
 
                 Button("保存") {
                     Haptics.success()
-                    saveAndDismiss()
+                    save()
+                    dismiss()
                 }
                 .font(.headline.weight(.semibold))
-                .disabled(title.isEmpty)
+                .disabled(!canPersistScript)
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 8)
