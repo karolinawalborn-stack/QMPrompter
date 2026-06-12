@@ -1,0 +1,45 @@
+name: 编译 IPA（TrollStore 可直接安装）
+
+on:
+  push:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-latest
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 查看 Xcode 版本
+        run: xcodebuild -version
+
+      - name: 编译应用（无需 Apple 签名）
+        run: |
+          xcodebuild \
+            -project QMPrompter.xcodeproj \
+            -scheme QMPrompter \
+            -configuration Release \
+            -sdk iphoneos \
+            -derivedDataPath build/DerivedData \
+            DEVELOPMENT_TEAM="" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_ENTITLEMENTS="" \
+            build
+
+      - name: 打包为 IPA 格式
+        run: |
+          mkdir -p Payload
+          cp -R build/DerivedData/Build/Products/Release-iphoneos/QMPrompter.app Payload/
+          zip -r QMPrompter.ipa Payload/
+
+      - name: 上传 IPA 产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: QMPrompter-TrollStore
+          path: QMPrompter.ipa
+          compression-level: 0
