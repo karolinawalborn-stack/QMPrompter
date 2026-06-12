@@ -1,12 +1,19 @@
 import SwiftUI
 
 // MARK: - Liquid Glass 兼容存根
-// 在缺少 glassEffect API 的 Xcode 版本中提供兼容实现。
-// 用 ultraThinMaterial 背景模拟 Liquid Glass 外观。
+// 某些 Xcode 版本中 glassEffect API 不可用，
+// 这里用 ultraThinMaterial 模拟其外观。
+
+/// Liquid Glass 风格的占位类型
+struct GlassEffectStyle {
+    static let regular = GlassEffectStyle()
+    func tint(_ color: Color) -> GlassEffectStyle { self }
+    func interactive() -> GlassEffectStyle { self }
+}
 
 extension View {
     /// Liquid Glass 风格背景 — 兼容实现
-    func glassEffect(_ style: Any?, in shape: some Shape) -> some View {
+    func glassEffect(_ style: GlassEffectStyle, in shape: some Shape) -> some View {
         self.background(.ultraThinMaterial, in: shape)
     }
 }
