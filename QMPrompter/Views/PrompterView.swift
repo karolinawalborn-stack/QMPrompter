@@ -695,7 +695,26 @@ struct PrompterView: View {
                     .padding(.horizontal, 4)
                 
                 VStack(spacing: 10) {
-                    beautyToggle
+                    Button {
+                        beautyConfig.isEnabled.toggle()
+                        Haptics.selection()
+                    } label: {
+                        HStack {
+                            Image(systemName: "camera.filters")
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundStyle(.white.opacity(0.72))
+                            Text("美颜")
+                                .font(.system(size: 14, weight: .medium))
+                                .foregroundStyle(.white.opacity(0.82))
+                            Spacer()
+                            Image(systemName: beautyConfig.isEnabled ? "checkmark.circle.fill" : "circle")
+                                .font(.system(size: 17))
+                                .foregroundStyle(beautyConfig.isEnabled ? .white : .white.opacity(0.35))
+                        }
+                        .padding(.vertical, 4)
+                    }
+                    .buttonStyle(.plain)
+                    
                     if beautyConfig.isEnabled {
                         controlSlider(
                             title: "磨皮",
@@ -1346,27 +1365,7 @@ private struct PromptProgressRail: View {
         guard maxOffset > 0 else { return 0 }
         return min(1, max(0, position.offset / maxOffset))
     }
-    private var beautyToggle: some View {
-        Button {
-            beautyConfig.isEnabled.toggle()
-            Haptics.selection()
-        } label: {
-            HStack {
-                Image(systemName: "camera.filters")
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(.white.opacity(0.72))
-                Text("美颜")
-                    .font(.system(size: 14, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.82))
-                Spacer()
-                Image(systemName: beautyConfig.isEnabled ? "checkmark.circle.fill" : "circle")
-                    .font(.system(size: 17))
-                    .foregroundStyle(beautyConfig.isEnabled ? .white : .white.opacity(0.35))
-            }
-            .padding(.vertical, 4)
-        }
-        .buttonStyle(.plain)
-    }
+
 }
 
 private extension View {
