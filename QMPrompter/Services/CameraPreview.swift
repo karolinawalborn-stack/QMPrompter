@@ -182,3 +182,222 @@ final class CameraCoordinator: NSObject {
         startSession()
     }
 }
+
+
+// ========================================================================
+// MARK: - Beauty Camera (Metal + Core Image filters)
+// ========================================================================
+
+struct BeautyConfig {
+    var isEnabled = false
+    var smoothing: Float = 0.3
+    var brightness: Float = 0.08
+}
+
+struct BeautyCameraPreview: UIViewRepresentable {
+    @Binding var permissionState: CameraPermissionState
+    @Binding var config: BeautyConfig
+
+    func makeCoordinator() -> BeautyCameraCoordinator {
+        BeautyCameraCoordinator(permissionState: $permissionState, config: $config)
+    }
+
+    func makeUIView(context: Context) -> MTKView {
+        let mtkView = MTKView()
+        mtkView.device = MTLCreateSystemDefaultDevice()
+        mtkView.framebufferOnly = false
+        mtkView.enableSetNeedsDisplay = false
+        mtkView.isPaused = true
+        mtkView.backgroundColor = .black
+        mtkView.contentScaleFactor = UIScreen.main.scale
+        mtkView.autoResizeDrawable = true
+        context.coordinator.setup(mtkView: mtkView)
+        return mtkView
+    }
+
+    func updateUIView(_ mtkView: MTKView, context: Context) {
+        context.coordinator.config = config
+    }
+
+    static func dismantleUIView(_ mtkView: MTKView, coordinator: BeautyCameraCoordinator) {
+        coordinator.invalidate()
+    }
+}
+
+final class BeautyCameraCoordinator: NSObject {
+    let session = AVCaptureSession()
+    private let sessionQueue = DispatchQueue(label: "com.qiaomu.prompter.beauty")
+    private let videoDataOutput = AVCaptureVideoDataOutput()
+    private let ciContext: CIContext
+    private let commandQueue: MTLCommandQueue
+    private var metalDevice: MTLDevice
+    private var latestCIImage: CIImage?
+    private weak var mtkView: MTKView?
+    private var permissionState: Binding<CameraPermissionState>
+    var config: BeautyConfig
+    private var isInvalidated = false
+
+    private let blurFilter = CIFilter(name: "CIGaussianBlur")!
+    private let blendFilter = CIFilter(name: "CIBlendWithAlphaMask")!
+    private let colorFilter = CIFilter(name: "CIColorControls")!
+
+    init(permissionState: Binding<CameraPermissionState>, config: Binding<BeautyConfig>) {
+        self.permissionState = permissionState
+        self.config = config.wrappedValue
+        guard let device = MTLCreateSystemDefaultDevice() else {
+            fatalError("Metal not available")
+        }
+        self.metalDevice = device
+        self.ciContext = CIContext(mtlDevice: device, options: [
+            CIContextOption.workingColorSpace: CGColorSpace(name: CGColorSpace.sRGB)!,
+            CIContextOption.highQualityDownsample: true
+        ])
+        self.commandQueue = device.makeCommandQueue()!
+        super.init()
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(handleWillResignActive),
+            name: UIApplication.willResignActiveNotification, object: nil
+        )
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(handleDidBecomeActive),
+            name: UIApplication.didBecomeActiveNotification, object: nil
+        )
+    }
+
+    deinit {
+        NotificationCenter.default.removeObserver(self)
+        invalidate()
+    }
+
+    func setup(mtkView: MTKView) {
+        self.mtkView = mtkView
+        mtkView.delegate = self
+        requestAndStart()
+    }
+
+    func requestAndStart() {
+        guard !isInvalidated else { return }
+        guard AVCaptureDevice.authorizationStatus(for: .video) == .authorized else {
+            setPermissionState(.denied)
+            return
+        }
+        setPermissionState(.authorized)
+        startSession()
+    }
+
+    func invalidate() {
+        isInvalidated = true
+        mtkView?.delegate = nil
+        mtkView = nil
+        stopSession()
+    }
+
+    func stopSession() {
+        sessionQueue.async { [weak self] in
+            if self?.session.isRunning == true { self?.session.stopRunning() }
+        }
+    }
+
+    private func startSession() {
+        sessionQueue.async { [weak self] in
+            guard let self, !isInvalidated else { return }
+            configureSession()
+            if !session.isRunning { session.startRunning() }
+        }
+    }
+
+    private func configureSession() {
+        session.beginConfiguration()
+        session.sessionPreset = .high
+        defer { session.commitConfiguration() }
+        guard let camera = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .front),
+              let input = try? AVCaptureDeviceInput(device: camera),
+              session.canAddInput(input)
+        else {
+            setPermissionState(.unavailable)
+            return
+        }
+        session.addInput(input)
+        videoDataOutput.videoSettings = [kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA]
+        videoDataOutput.alwaysDiscardsLateVideoFrames = true
+        videoDataOutput.setSampleBufferDelegate(self, queue: sessionQueue)
+        if session.canAddOutput(videoDataOutput) {
+            session.addOutput(videoDataOutput)
+        }
+        if let connection = videoDataOutput.connection(with: .video) {
+            connection.isVideoMirrored = true
+            connection.videoOrientation = .portrait
+        }
+    }
+
+    private func setPermissionState(_ state: CameraPermissionState) {
+        DispatchQueue.main.async { [weak self] in
+            self?.permissionState.wrappedValue = state
+        }
+    }
+
+    private func applyBeauty(to input: CIImage) -> CIImage {
+        guard config.isEnabled else { return input }
+        let smoothing = max(0, min(1, config.smoothing))
+        let brightness = max(0, min(0.3, config.brightness))
+        var output = input
+        if smoothing > 0.01 {
+            let radius = Double(smoothing) * 8.0 + 1.0
+            blurFilter.setValue(output, forKey: kCIInputImageKey)
+            blurFilter.setValue(radius, forKey: kCIInputRadiusKey)
+            guard let blurred = blurFilter.outputImage else { return input }
+            let maskAlpha = max(0.05, min(0.45, Double(smoothing) * 0.5))
+            let maskColor = CIColor(red: 1, green: 1, blue: 1, alpha: CGFloat(maskAlpha))
+            let mask = CIImage(color: maskColor).cropped(to: output.extent)
+            blendFilter.setValue(blurred, forKey: kCIInputImageKey)
+            blendFilter.setValue(output, forKey: kCIInputBackgroundImageKey)
+            blendFilter.setValue(mask, forKey: kCIInputMaskImageKey)
+            if let blended = blendFilter.outputImage { output = blended }
+        }
+        if brightness > 0.01 {
+            colorFilter.setValue(output, forKey: kCIInputImageKey)
+            colorFilter.setValue(brightness, forKey: kCIInputBrightnessKey)
+            colorFilter.setValue(1.0 + brightness * 0.3, forKey: kCIInputSaturationKey)
+            colorFilter.setValue(1.0 + brightness * 0.05, forKey: kCIInputContrastKey)
+            if let colorAdjusted = colorFilter.outputImage { output = colorAdjusted }
+        }
+        return output
+    }
+
+    @objc private func handleWillResignActive() { stopSession() }
+    @objc private func handleDidBecomeActive() {
+        guard !isInvalidated else { return }
+        requestAndStart()
+    }
+}
+
+extension BeautyCameraCoordinator: AVCaptureVideoDataOutputSampleBufferDelegate {
+    func captureOutput(_ output: AVCaptureOutput,
+                       didOutput sampleBuffer: CMSampleBuffer,
+                       from connection: AVCaptureConnection) {
+        guard !isInvalidated, let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
+        latestCIImage = CIImage(cvPixelBuffer: pixelBuffer)
+        DispatchQueue.main.async { [weak self] in
+            self?.mtkView?.setNeedsDisplay()
+        }
+    }
+}
+
+extension BeautyCameraCoordinator: MTKViewDelegate {
+    func mtkView(_ view: MTKView, drawableSizeWillChange size: CGSize) {}
+    func draw(in view: MTKView) {
+        guard !isInvalidated, let inputImage = latestCIImage, let drawable = view.currentDrawable else { return }
+        let processed = applyBeauty(to: inputImage)
+        let bounds = CGRect(origin: .zero, size: view.drawableSize)
+        let s = min(bounds.width / processed.extent.width, bounds.height / processed.extent.height)
+        let scaled = processed.transformed(by: CGAffineTransform(scaleX: s, y: s))
+        let ox = (bounds.width - scaled.extent.width) / 2
+        let oy = (bounds.height - scaled.extent.height) / 2
+        guard let cb = commandQueue.makeCommandBuffer() else { return }
+        ciContext.render(scaled, to: drawable.texture, commandBuffer: cb,
+            bounds: CGRect(x: ox, y: oy, width: scaled.extent.width, height: scaled.extent.height),
+            colorSpace: CGColorSpace(name: CGColorSpace.sRGB)!)
+        cb.present(drawable)
+        cb.commit()
+    }
+}
