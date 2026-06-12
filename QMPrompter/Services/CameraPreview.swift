@@ -412,7 +412,7 @@ extension BeautyCameraCoordinator: MTKViewDelegate {
         guard !isInvalidated, let inputImage = latestCIImage, let drawable = view.currentDrawable else { return }
         let processed = applyBeauty(to: inputImage)
         let bounds = CGRect(origin: .zero, size: view.drawableSize)
-        let s = min(bounds.width / processed.extent.width, bounds.height / processed.extent.height)
+        let s = max(bounds.width / processed.extent.width, bounds.height / processed.extent.height)
         let scaled = processed.transformed(by: CGAffineTransform(scaleX: s, y: s))
         let ox = (bounds.width - scaled.extent.width) / 2
         let oy = (bounds.height - scaled.extent.height) / 2
